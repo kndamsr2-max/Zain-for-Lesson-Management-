@@ -27,6 +27,8 @@ export interface Group {
   notes: string;
 }
 
+export type AttendanceStatus = 'حاضر' | 'غائب' | 'متأخر';
+
 export interface AttendanceRecord {
   id: string;
   studentId: string;
@@ -34,7 +36,7 @@ export interface AttendanceRecord {
   groupId: string;
   groupName: string;
   date: string;
-  status: 'حاضر' | 'غائب';
+  status: AttendanceStatus;
   notes?: string;
 }
 

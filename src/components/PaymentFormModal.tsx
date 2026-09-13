@@ -6,14 +6,21 @@ interface PaymentFormModalProps {
   isOpen: boolean;
   students: Student[];
   preselectedStudentId?: string;
+  paymentToEdit?: PaymentRecord | null;
   onClose: () => void;
-  onSave: (paymentData: Omit<PaymentRecord, 'id' | 'studentName'> & { studentName: string }) => void;
+  onSave: (
+    paymentData: Omit<PaymentRecord, 'id' | 'studentName'> & {
+      studentName: string;
+      id?: string;
+    }
+  ) => void;
 }
 
 export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
   isOpen,
   students,
   preselectedStudentId,
+  paymentToEdit,
   onClose,
   onSave,
 }) => {
@@ -26,26 +33,35 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      const today = new Date().toISOString().split('T')[0];
-      setDate(today);
-      if (preselectedStudentId) {
-        setStudentId(preselectedStudentId);
-        const st = students.find((s) => s.id === preselectedStudentId);
-        if (st && st.remainingAmount > 0) {
-          setAmount(st.remainingAmount);
-        } else {
-          setAmount(100);
+      if (paymentToEdit) {
+        setStudentId(paymentToEdit.studentId);
+        setAmount(paymentToEdit.amount);
+        setDate(paymentToEdit.date);
+        setPaymentMethod(paymentToEdit.paymentMethod);
+        setNotes(paymentToEdit.notes || '');
+        setErrorMessage('');
+      } else {
+        const today = new Date().toISOString().split('T')[0];
+        setDate(today);
+        if (preselectedStudentId) {
+          setStudentId(preselectedStudentId);
+          const st = students.find((s) => s.id === preselectedStudentId);
+          if (st && st.remainingAmount > 0) {
+            setAmount(st.remainingAmount);
+          } else {
+            setAmount(100);
+          }
+        } else if (students.length > 0) {
+          const first = students[0];
+          setStudentId(first.id);
+          setAmount(first.remainingAmount > 0 ? first.remainingAmount : 100);
         }
-      } else if (students.length > 0) {
-        const first = students[0];
-        setStudentId(first.id);
-        setAmount(first.remainingAmount > 0 ? first.remainingAmount : 100);
+        setPaymentMethod('نقدي');
+        setNotes('');
+        setErrorMessage('');
       }
-      setPaymentMethod('نقدي');
-      setNotes('');
-      setErrorMessage('');
     }
-  }, [isOpen, preselectedStudentId, students]);
+  }, [isOpen, preselectedStudentId, paymentToEdit, students]);
 
   if (!isOpen) return null;
 
@@ -76,9 +92,10 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
     }
 
     const st = students.find((s) => s.id === studentId);
-    const studentName = st ? st.name : 'غير محدد';
+    const studentName = st ? st.name : (paymentToEdit ? paymentToEdit.studentName : 'غير محدد');
 
     onSave({
+      id: paymentToEdit ? paymentToEdit.id : undefined,
       studentId,
       studentName,
       amount: Number(amount),
@@ -91,7 +108,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
   return (
     <div
       id="payment-form-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={onClose}
       dir="rtl"
     >
@@ -106,7 +123,9 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
             <div className="p-2 bg-sky-500/20 text-sky-400 rounded-xl">
               <CreditCard className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-white">تسجيل دفعة جديدة</h3>
+            <h3 className="text-base font-bold text-white">
+              {paymentToEdit ? 'تعديل بيانات الدفعة' : 'تسجيل دفعة جديدة'}
+            </h3>
           </div>
           <button
             id="payment-form-close-btn"
@@ -140,6 +159,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
               onChange={handleStudentSelect}
               className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
               required
+              disabled={!!paymentToEdit}
             >
               <option value="">-- اختر الطالب --</option>
               {students.map((st) => (
@@ -192,9 +212,9 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
                 id="payment-amount-input"
                 type="number"
                 min="1"
-                value={amount}
+                value={amount || ''}
                 onChange={(e) => setAmount(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+                className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500 font-mono"
                 required
               />
             </div>
@@ -260,7 +280,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
               className="px-5 py-2 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-[#0066ff] to-[#0052cc] hover:from-[#0077ff] hover:to-[#0066ff] rounded-xl transition-all flex items-center gap-2 shadow-[0_2px_14px_rgba(0,102,255,0.35)] cursor-pointer"
             >
               <Save className="w-4 h-4" />
-              <span>حفظ الدفعة</span>
+              <span>{paymentToEdit ? 'حفظ التعديلات' : 'حفظ الدفعة'}</span>
             </button>
           </div>
         </form>

@@ -45,11 +45,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setErrorMessage(null);
 
     // Validation
-    const trimmedUser = userId.trim();
+    const trimmedUser = userId.trim().toLowerCase();
     const trimmedPass = password.trim();
 
     if (!trimmedUser || !trimmedPass) {
       setErrorMessage('يرجى إدخال اسم المستخدم وكلمة المرور للمتابعة');
+      return;
+    }
+
+    // Verify authorized credentials
+    const validUsers = ['admin', 'zain', 'teacher', 'director', 'manager', 'st-1001'];
+    const isValidUser = validUsers.includes(trimmedUser) || trimmedUser.startsWith('st-');
+    const isValidPass = trimmedPass === '123456' || trimmedPass === 'admin123' || trimmedPass === 'zain2026';
+
+    if (!isValidUser || !isValidPass) {
+      setErrorMessage('اسم المستخدم أو كلمة المرور غير صحيحة. يرجى استخدام بيانات الدخول المعتمدة (admin / 123456).');
       return;
     }
 
@@ -607,7 +617,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       {forgotModalOpen && (
         <div
           id="forgot-password-backdrop"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
           onClick={() => setForgotModalOpen(false)}
         >
           <div

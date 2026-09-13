@@ -18,7 +18,22 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({ sessions, groups }) 
   const [selectedGroupFilter, setSelectedGroupFilter] = useState('');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
-  const filteredSessions = sessions.filter((s) => {
+  // If sessions table has records use them, otherwise derive schedule from groups
+  const displaySessions: LessonSession[] =
+    sessions.length > 0
+      ? sessions
+      : groups.map((g) => ({
+          id: `ses-${g.id}`,
+          groupId: g.id,
+          groupName: g.name,
+          course: g.course,
+          day: g.days,
+          date: new Date().toISOString().split('T')[0],
+          time: g.time,
+          studentCount: g.studentCount,
+        }));
+
+  const filteredSessions = displaySessions.filter((s) => {
     return !selectedGroupFilter || s.groupId === selectedGroupFilter;
   });
 
@@ -86,7 +101,13 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({ sessions, groups }) 
       </div>
 
       {/* Content Rendering: Cards or Table */}
-      {viewMode === 'cards' ? (
+      {filteredSessions.length === 0 ? (
+        <div className="bg-[#08152b] rounded-2xl border border-[#173054] p-12 text-center text-slate-400">
+          <CalendarDays className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-300">لا توجد حصص مجدولة حالياً</p>
+          <p className="text-xs text-slate-500 mt-1">تأكد من إعداد مواعيد المجموعات أو اختر مجموعة أخرى</p>
+        </div>
+      ) : viewMode === 'cards' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredSessions.map((ses) => (
             <div

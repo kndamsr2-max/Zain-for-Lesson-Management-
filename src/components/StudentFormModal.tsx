@@ -108,7 +108,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
   return (
     <div
       id="student-form-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={onClose}
       dir="rtl"
     >

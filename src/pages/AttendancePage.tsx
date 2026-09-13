@@ -5,8 +5,11 @@ import {
   Save,
   Clock,
   Users,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
 } from 'lucide-react';
-import { AttendanceRecord, Group, Student } from '../types';
+import { AttendanceRecord, AttendanceStatus, Group, Student } from '../types';
 
 interface AttendancePageProps {
   groups: Group[];
@@ -15,9 +18,10 @@ interface AttendancePageProps {
   onSaveAttendance: (
     groupId: string,
     date: string,
-    records: { studentId: string; status: 'حاضر' | 'غائب' }[]
+    records: { studentId: string; status: AttendanceStatus }[]
   ) => void;
   onViewStudentHistory: (student: Student) => void;
+  isLoading?: boolean;
 }
 
 export const AttendancePage: React.FC<AttendancePageProps> = ({
@@ -26,6 +30,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
   attendanceRecords,
   onSaveAttendance,
   onViewStudentHistory,
+  isLoading = false,
 }) => {
   const [selectedGroupId, setSelectedGroupId] = useState<string>(
     groups.length > 0 ? groups[0].id : ''
@@ -34,18 +39,25 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
     new Date().toISOString().split('T')[0]
   );
 
-  // Status mapping: { [studentId]: 'حاضر' | 'غائب' }
-  const [attendanceState, setAttendanceState] = useState<Record<string, 'حاضر' | 'غائب'>>({});
+  // Update selectedGroupId if groups change and current is empty or invalid
+  useEffect(() => {
+    if (groups.length > 0 && (!selectedGroupId || !groups.find((g) => g.id === selectedGroupId))) {
+      setSelectedGroupId(groups[0].id);
+    }
+  }, [groups, selectedGroupId]);
 
-  // Group students
+  // Status mapping: { [studentId]: 'حاضر' | 'غائب' | 'متأخر' }
+  const [attendanceState, setAttendanceState] = useState<Record<string, AttendanceStatus>>({});
+
+  // Group students dynamically from real students state
   const groupStudents = students.filter((s) => s.groupId === selectedGroupId);
 
-  // Sync state when group or date changes
+  // Sync state when group or date changes: load existing recorded attendance from Supabase records
   useEffect(() => {
     const existing = attendanceRecords.filter(
       (r) => r.groupId === selectedGroupId && r.date === selectedDate
     );
-    const newState: Record<string, 'حاضر' | 'غائب'> = {};
+    const newState: Record<string, AttendanceStatus> = {};
 
     groupStudents.forEach((student) => {
       const match = existing.find((r) => r.studentId === student.id);
@@ -53,17 +65,17 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
     });
 
     setAttendanceState(newState);
-  }, [selectedGroupId, selectedDate, students, attendanceRecords]);
+  }, [selectedGroupId, selectedDate, groupStudents.length, attendanceRecords]);
 
-  const handleStatusChange = (studentId: string, status: 'حاضر' | 'غائب') => {
+  const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
     setAttendanceState((prev) => ({
       ...prev,
       [studentId]: status,
     }));
   };
 
-  const handleMarkAll = (status: 'حاضر' | 'غائب') => {
-    const updated: Record<string, 'حاضر' | 'غائب'> = {};
+  const handleMarkAll = (status: AttendanceStatus) => {
+    const updated: Record<string, AttendanceStatus> = {};
     groupStudents.forEach((s) => {
       updated[s.id] = status;
     });
@@ -74,7 +86,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
     if (!selectedGroupId) return;
     const records = groupStudents.map((s) => ({
       studentId: s.id,
-      status: attendanceState[s.id] || 'حاضر',
+      status: attendanceState[s.id] || ('حاضر' as AttendanceStatus),
     }));
     onSaveAttendance(selectedGroupId, selectedDate, records);
   };
@@ -82,6 +94,11 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
   // Stats calculation
   const presentCount = Object.values(attendanceState).filter((st) => st === 'حاضر').length;
   const absentCount = Object.values(attendanceState).filter((st) => st === 'غائب').length;
+  const lateCount = Object.values(attendanceState).filter((st) => st === 'متأخر').length;
+
+  const isAlreadyRecorded = attendanceRecords.some(
+    (r) => r.groupId === selectedGroupId && r.date === selectedDate
+  );
 
   return (
     <div className="space-y-5 select-none" dir="rtl">
@@ -93,20 +110,30 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
             <span>تسجيل حضور وغياب الطلاب</span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            تسجيل الحصة اليومية وحفظ السجلات ومتابعة التزام الطلاب
+            تسجيل الحصة اليومية وحفظ السجلات في Supabase مع منع التكرار وإمكانية التعديل
           </p>
         </div>
 
         <button
           id="btn-save-attendance-top"
           onClick={handleSave}
-          disabled={groupStudents.length === 0}
+          disabled={groupStudents.length === 0 || isLoading}
           className="px-5 py-2.5 bg-gradient-to-r from-[#0066ff] to-[#0052cc] hover:from-[#0077ff] hover:to-[#0066ff] disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-[0_2px_14px_rgba(0,102,255,0.35)] cursor-pointer"
         >
           <Save className="w-4 h-4" />
-          <span>حفظ كشف الحضور</span>
+          <span>{isAlreadyRecorded ? 'حفظ التعديلات على الكشف' : 'حفظ كشف الحضور'}</span>
         </button>
       </div>
+
+      {/* Notice if already recorded for date */}
+      {isAlreadyRecorded && (
+        <div className="bg-sky-500/10 border border-sky-500/25 rounded-xl px-4 py-2.5 text-xs text-sky-300 flex items-center gap-2">
+          <Clock className="w-4 h-4 text-sky-400 shrink-0" />
+          <span>
+            يوجد كشف حضور مسجل مسبقاً لهذه المجموعة بتاريخ {selectedDate}. يمكنك تعديل حالة أي طالب والضغط على حفظ لتحديث الكشف.
+          </span>
+        </div>
+      )}
 
       {/* Top Filter Selection: اختيار المجموعة + اختيار التاريخ */}
       <div className="bg-[#08152b] rounded-2xl border border-[#173054] p-5 shadow-xl grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -115,18 +142,22 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
             <Users className="w-4 h-4 text-sky-400" />
             <span>اختيار المجموعة</span>
           </label>
-          <select
-            id="attendance-group-select"
-            value={selectedGroupId}
-            onChange={(e) => setSelectedGroupId(e.target.value)}
-            className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
-          >
-            {groups.map((grp) => (
-              <option key={grp.id} value={grp.id} className="bg-[#09152b] text-white">
-                {grp.name} ({grp.course})
-              </option>
-            ))}
-          </select>
+          {groups.length === 0 ? (
+            <div className="text-xs text-slate-400 py-2">لا توجد مجموعات مسجلة في النظام.</div>
+          ) : (
+            <select
+              id="attendance-group-select"
+              value={selectedGroupId}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+            >
+              {groups.map((grp) => (
+                <option key={grp.id} value={grp.id} className="bg-[#09152b] text-white">
+                  {grp.name} ({grp.course})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div>
@@ -148,7 +179,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
       <div className="bg-[#08152b] rounded-2xl border border-[#173054] shadow-xl overflow-hidden">
         {/* Controls and Counters */}
         <div className="p-4 border-b border-[#142642] flex flex-wrap items-center justify-between gap-3 bg-[#0a1832]">
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs">
             <div className="flex items-center gap-1.5">
               <span className="text-slate-400">عدد الطلاب بالحصّة:</span>
               <span className="font-bold text-white">{groupStudents.length}</span>
@@ -165,6 +196,12 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
                 {absentCount}
               </span>
             </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-amber-400">متأخر:</span>
+              <span className="font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
+                {lateCount}
+              </span>
+            </div>
           </div>
 
           {/* Quick Mark All Buttons */}
@@ -173,7 +210,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
               id="btn-mark-all-present"
               type="button"
               onClick={() => handleMarkAll('حاضر')}
-              className="px-3 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer"
+              className="px-2.5 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer"
             >
               تحديد الكل حاضر
             </button>
@@ -181,14 +218,22 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
               id="btn-mark-all-absent"
               type="button"
               onClick={() => handleMarkAll('غائب')}
-              className="px-3 py-1.5 text-xs font-semibold text-rose-300 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 rounded-lg transition-colors cursor-pointer"
+              className="px-2.5 py-1.5 text-xs font-semibold text-rose-300 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 rounded-lg transition-colors cursor-pointer"
             >
               تحديد الكل غائب
+            </button>
+            <button
+              id="btn-mark-all-late"
+              type="button"
+              onClick={() => handleMarkAll('متأخر')}
+              className="px-2.5 py-1.5 text-xs font-semibold text-amber-300 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 rounded-lg transition-colors cursor-pointer"
+            >
+              تحديد الكل متأخر
             </button>
           </div>
         </div>
 
-        {/* Student list: | الطالب | حاضر | غائب | + سجل الحضور */}
+        {/* Student list: | # | الطالب | رقم الهاتف | حاضر | غائب | متأخر | سجل الحضور */}
         <div className="overflow-x-auto">
           <table id="attendance-table" className="w-full text-right text-xs">
             <thead className="bg-[#0a1832] text-slate-400 border-b border-[#142642] font-semibold whitespace-nowrap">
@@ -198,13 +243,14 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
                 <th className="px-4 py-3">رقم الهاتف</th>
                 <th className="px-4 py-3 text-center">حاضر</th>
                 <th className="px-4 py-3 text-center">غائب</th>
+                <th className="px-4 py-3 text-center">متأخر</th>
                 <th className="px-4 py-3 text-center">سجل حضور الطالب</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#102038]">
               {groupStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-10 text-slate-400">
+                  <td colSpan={7} className="text-center py-10 text-slate-400">
                     لا يوجد طلاب مسجلين في هذه المجموعة حتى الآن.
                   </td>
                 </tr>
@@ -213,13 +259,18 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
                   const currentStatus = attendanceState[student.id] || 'حاضر';
                   const isPresent = currentStatus === 'حاضر';
                   const isAbsent = currentStatus === 'غائب';
+                  const isLate = currentStatus === 'متأخر';
 
                   return (
                     <tr
                       key={student.id}
                       id={`attendance-row-${student.id}`}
                       className={`hover:bg-slate-800/40 transition-colors ${
-                        isAbsent ? 'bg-rose-950/20' : ''
+                        isAbsent
+                          ? 'bg-rose-950/20'
+                          : isLate
+                          ? 'bg-amber-950/20'
+                          : ''
                       }`}
                     >
                       <td className="px-4 py-3 text-slate-400 font-mono">
@@ -240,10 +291,10 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
                             name={`attendance-${student.id}`}
                             checked={isPresent}
                             onChange={() => handleStatusChange(student.id, 'حاضر')}
-                            className="w-4 h-4 text-sky-500 focus:ring-sky-500 border-slate-700 bg-slate-900"
+                            className="w-4 h-4 text-emerald-500 focus:ring-emerald-500 border-slate-700 bg-slate-900 cursor-pointer"
                           />
                           <span
-                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
                               isPresent
                                 ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
                                 : 'text-slate-400 hover:text-emerald-300'
@@ -262,16 +313,38 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
                             name={`attendance-${student.id}`}
                             checked={isAbsent}
                             onChange={() => handleStatusChange(student.id, 'غائب')}
-                            className="w-4 h-4 text-rose-500 focus:ring-rose-500 border-slate-700 bg-slate-900"
+                            className="w-4 h-4 text-rose-500 focus:ring-rose-500 border-slate-700 bg-slate-900 cursor-pointer"
                           />
                           <span
-                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
                               isAbsent
                                 ? 'bg-rose-500/30 text-rose-300 border border-rose-500/40'
                                 : 'text-slate-400 hover:text-rose-300'
                             }`}
                           >
                             غائب
+                          </span>
+                        </label>
+                      </td>
+
+                      {/* متأخر Option */}
+                      <td className="px-4 py-3 text-center">
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`attendance-${student.id}`}
+                            checked={isLate}
+                            onChange={() => handleStatusChange(student.id, 'متأخر')}
+                            className="w-4 h-4 text-amber-500 focus:ring-amber-500 border-slate-700 bg-slate-900 cursor-pointer"
+                          />
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                              isLate
+                                ? 'bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                                : 'text-slate-400 hover:text-amber-300'
+                            }`}
+                          >
+                            متأخر
                           </span>
                         </label>
                       </td>
@@ -303,11 +376,11 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({
           <button
             id="btn-save-attendance-bottom"
             onClick={handleSave}
-            disabled={groupStudents.length === 0}
+            disabled={groupStudents.length === 0 || isLoading}
             className="px-5 py-2 bg-gradient-to-r from-[#0066ff] to-[#0052cc] hover:from-[#0077ff] hover:to-[#0066ff] disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all shadow-[0_2px_12px_rgba(0,102,255,0.35)] cursor-pointer"
           >
             <Save className="w-4 h-4" />
-            <span>حفظ الحضور</span>
+            <span>{isAlreadyRecorded ? 'حفظ التعديلات على الكشف' : 'حفظ كشف الحضور'}</span>
           </button>
         </div>
       </div>

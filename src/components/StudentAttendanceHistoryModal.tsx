@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CalendarCheck, CheckCircle2, XCircle } from 'lucide-react';
+import { X, CalendarCheck, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { AttendanceRecord, Student } from '../types';
 
 interface StudentAttendanceHistoryModalProps {
@@ -20,13 +20,14 @@ export const StudentAttendanceHistoryModal: React.FC<StudentAttendanceHistoryMod
   const records = attendanceRecords.filter((r) => r.studentId === student.id);
   const presentCount = records.filter((r) => r.status === 'حاضر').length;
   const absentCount = records.filter((r) => r.status === 'غائب').length;
+  const lateCount = records.filter((r) => r.status === 'متأخر').length;
   const total = records.length;
-  const attendanceRate = total > 0 ? Math.round((presentCount / total) * 100) : 0;
+  const attendanceRate = total > 0 ? Math.round(((presentCount + lateCount) / total) * 100) : 0;
 
   return (
     <div
       id="attendance-history-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
       onClick={onClose}
       dir="rtl"
     >
@@ -62,9 +63,9 @@ export const StudentAttendanceHistoryModal: React.FC<StudentAttendanceHistoryMod
 
         {/* Stats summary */}
         <div className="p-4 bg-[#09152b] border-b border-[#142642] shrink-0">
-          <div className="grid grid-cols-4 gap-2 text-center text-xs">
+          <div className="grid grid-cols-5 gap-2 text-center text-xs">
             <div className="p-2 bg-[#08152b] rounded-xl border border-[#1b3459]">
-              <span className="text-slate-400 block text-[11px]">إجمالي الحصص</span>
+              <span className="text-slate-400 block text-[11px]">الحصص</span>
               <span className="font-bold text-white mt-1 block font-mono">{total}</span>
             </div>
             <div className="p-2 bg-[#08152b] rounded-xl border border-[#1b3459]">
@@ -76,7 +77,11 @@ export const StudentAttendanceHistoryModal: React.FC<StudentAttendanceHistoryMod
               <span className="font-bold text-rose-400 mt-1 block font-mono">{absentCount}</span>
             </div>
             <div className="p-2 bg-[#08152b] rounded-xl border border-[#1b3459]">
-              <span className="text-slate-400 block text-[11px]">نسبة الالتزام</span>
+              <span className="text-slate-400 block text-[11px]">متأخر</span>
+              <span className="font-bold text-amber-400 mt-1 block font-mono">{lateCount}</span>
+            </div>
+            <div className="p-2 bg-[#08152b] rounded-xl border border-[#1b3459]">
+              <span className="text-slate-400 block text-[11px]">الالتزام</span>
               <span className="font-bold text-sky-400 mt-1 block font-mono">{attendanceRate}%</span>
             </div>
           </div>
@@ -109,6 +114,11 @@ export const StudentAttendanceHistoryModal: React.FC<StudentAttendanceHistoryMod
                           <span className="inline-flex items-center gap-1 text-emerald-300 bg-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold border border-emerald-500/30">
                             <CheckCircle2 className="w-3 h-3" />
                             حاضر
+                          </span>
+                        ) : rec.status === 'متأخر' ? (
+                          <span className="inline-flex items-center gap-1 text-amber-300 bg-amber-500/20 px-2.5 py-0.5 rounded-full font-bold border border-amber-500/30">
+                            <Clock className="w-3 h-3" />
+                            متأخر
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-rose-300 bg-rose-500/20 px-2.5 py-0.5 rounded-full font-bold border border-rose-500/30">

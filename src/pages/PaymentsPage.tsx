@@ -4,10 +4,10 @@ import {
   PlusCircle,
   Search,
   Wallet,
-  CheckCircle2,
   TrendingUp,
-  AlertCircle,
   FileText,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import { PaymentRecord, Student } from '../types';
 
@@ -15,41 +15,51 @@ interface PaymentsPageProps {
   payments: PaymentRecord[];
   students: Student[];
   onOpenRecordPayment: () => void;
+  onEditPayment?: (payment: PaymentRecord) => void;
+  onDeletePayment?: (paymentId: string) => void;
 }
 
 export const PaymentsPage: React.FC<PaymentsPageProps> = ({
   payments,
   students,
   onOpenRecordPayment,
+  onEditPayment,
+  onDeletePayment,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
 
-  // Overall calculations across all students for the center
+  // Overall calculations dynamically derived from students and payments
   const totalSubscriptions = students.reduce(
-    (acc, curr) => acc + (curr.subscriptionFee || 0),
+    (acc, curr) => acc + (Number(curr.subscriptionFee) || 0),
     0
   );
   const totalPaid = payments.reduce(
-    (acc, curr) => acc + (curr.amount || 0),
+    (acc, curr) => acc + (Number(curr.amount) || 0),
     0
   );
-  const totalRemaining = students.reduce(
-    (acc, curr) => acc + (curr.remainingAmount || 0),
-    0
-  );
+  const totalRemaining = Math.max(0, totalSubscriptions - totalPaid);
 
   const filteredPayments = payments.filter((p) => {
     const term = searchTerm.trim().toLowerCase();
     const matchesSearch =
       !term ||
       p.studentName.toLowerCase().includes(term) ||
+      (p.receiptNumber && p.receiptNumber.toLowerCase().includes(term)) ||
       (p.notes && p.notes.toLowerCase().includes(term));
 
     const matchesMethod = !methodFilter || p.paymentMethod === methodFilter;
 
     return matchesSearch && matchesMethod;
   });
+
+  const handleDelete = (paymentId: string) => {
+    if (window.confirm('هل أنت متأكد من رغبتك في حذف هذه الدفعة المالية؟ سيتم تحديث حساب الطالب والمتبقي تلقائياً.')) {
+      if (onDeletePayment) {
+        onDeletePayment(paymentId);
+      }
+    }
+  };
 
   return (
     <div className="space-y-5 select-none" dir="rtl">
@@ -85,7 +95,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
               <FileText className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-white">
+          <div className="mt-2 text-2xl font-extrabold text-white font-mono">
             {totalSubscriptions}{' '}
             <span className="text-xs font-normal text-slate-400">ج.م</span>
           </div>
@@ -99,7 +109,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-emerald-400">
+          <div className="mt-2 text-2xl font-extrabold text-emerald-400 font-mono">
             {totalPaid}{' '}
             <span className="text-xs font-normal text-slate-400">ج.م</span>
           </div>
@@ -113,7 +123,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
               <Wallet className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-rose-400">
+          <div className="mt-2 text-2xl font-extrabold text-rose-400 font-mono">
             {totalRemaining}{' '}
             <span className="text-xs font-normal text-slate-400">ج.م</span>
           </div>
@@ -128,7 +138,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="بحث باسم الطالب أو البيان..."
+            placeholder="بحث باسم الطالب، رقم الإيصال، أو البيان..."
             className="w-full pr-9 pl-3.5 py-2 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40"
           />
           <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
@@ -154,7 +164,7 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
       <div className="bg-[#08152b] rounded-2xl border border-[#173054] shadow-xl overflow-hidden">
         <div className="p-4 border-b border-[#142642] flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-400">
-            سجل المقبوضات ({filteredPayments.length} عملية مسجلة)
+            سجل المقبوضات التاريخية ({filteredPayments.length} عملية مسجلة)
           </span>
         </div>
 
@@ -168,28 +178,31 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
                 <th className="px-4 py-3">تاريخ الدفع</th>
                 <th className="px-4 py-3">طريقة الدفع</th>
                 <th className="px-4 py-3">ملاحظات وبيان</th>
+                {(onEditPayment || onDeletePayment) && (
+                  <th className="px-4 py-3 text-center">إجراءات</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#102038] whitespace-nowrap">
               {filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-10 text-slate-400">
-                    لا توجد مدفوعات مسجلة مطابقة للبحث
+                  <td colSpan={7} className="text-center py-10 text-slate-400">
+                    لا توجد مدفوعات مسجلة حتى الآن في السنتر.
                   </td>
                 </tr>
               ) : (
                 filteredPayments.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-800/40 transition-colors">
+                  <tr key={p.id} id={`payment-row-${p.id}`} className="hover:bg-slate-800/40 transition-colors">
                     <td className="px-4 py-3 font-mono text-sky-400 font-bold">
-                      {p.receiptNumber || ('REC-' + p.id.replace('pay-', ''))}
+                      {p.receiptNumber || ('REC-' + p.id.slice(0, 6))}
                     </td>
                     <td className="px-4 py-3 font-bold text-white">
                       {p.studentName}
                     </td>
-                    <td className="px-4 py-3 font-bold text-emerald-400 text-sm">
+                    <td className="px-4 py-3 font-bold text-emerald-400 text-sm font-mono">
                       {p.amount} ج.م
                     </td>
-                    <td className="px-4 py-3 text-slate-300 font-medium">
+                    <td className="px-4 py-3 text-slate-300 font-medium font-mono">
                       {p.date}
                     </td>
                     <td className="px-4 py-3">
@@ -197,9 +210,35 @@ export const PaymentsPage: React.FC<PaymentsPageProps> = ({
                         {p.paymentMethod}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-400">
+                    <td className="px-4 py-3 text-slate-400 max-w-xs truncate">
                       {p.notes || '—'}
                     </td>
+                    {(onEditPayment || onDeletePayment) && (
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          {onEditPayment && (
+                            <button
+                              id={`btn-edit-payment-${p.id}`}
+                              onClick={() => onEditPayment(p)}
+                              className="p-1.5 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg transition-colors cursor-pointer"
+                              title="تعديل الدفعة"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {onDeletePayment && (
+                            <button
+                              id={`btn-delete-payment-${p.id}`}
+                              onClick={() => handleDelete(p.id)}
+                              className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                              title="حذف الدفعة"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

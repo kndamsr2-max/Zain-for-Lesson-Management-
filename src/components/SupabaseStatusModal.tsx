@@ -52,7 +52,7 @@ export const SupabaseStatusModal: React.FC<SupabaseStatusModalProps> = ({
   return (
     <div
       id="supabase-status-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm select-none"
       dir="rtl"
       onClick={onClose}
     >

@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { PageId, Student, Group, PaymentRecord, LessonSession, AttendanceRecord } from './types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { PageId, Student, Group, PaymentRecord, LessonSession, AttendanceRecord, AttendanceStatus } from './types';
+import { generateUUID } from './utils/uuid';
 import {
   studentsService,
   groupsService,
@@ -7,6 +9,9 @@ import {
   attendanceService,
   sessionsService,
 } from './services/dataService';
+import { setupRealtimeSync } from './services/realtimeService';
+import { dbMapper } from './services/dbMapper';
+import { isSupabaseConfigured } from './lib/supabaseClient';
 import { Navigation } from './components/Navigation';
 import { Notification } from './components/Notification';
 import { ConfirmModal } from './components/ConfirmModal';
@@ -29,37 +34,53 @@ import { LoginPage } from './pages/LoginPage';
 import { TopBar } from './components/TopBar';
 
 export default function App() {
-  // Authentication State: Default to false to showcase the enhanced professional Login Page
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Authentication State with persistent browser session across refreshes
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('zain_auth_session') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleLoginSuccess = useCallback(() => {
+    try {
+      sessionStorage.setItem('zain_auth_session', 'true');
+    } catch {
+      // ignore
+    }
+    setIsLoggedIn(true);
+    showNotification('تم تسجيل الدخول بنجاح إلى نظام زين لإدارة الدروس والسناتر');
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    try {
+      sessionStorage.removeItem('zain_auth_session');
+    } catch {
+      // ignore
+    }
+    setIsLoggedIn(false);
+    showNotification('تم تسجيل الخروج بنجاح', 'info');
+  }, []);
 
   // Active Navigation
   const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [topBarSearchTerm, setTopBarSearchTerm] = useState('');
 
-  // Core Data State (Loaded safely via data service layer)
+  // Core Data State (Loaded safely with initial memory baseline, then synced via Supabase)
   const [students, setStudents] = useState<Student[]>(() => studentsService.loadStudents());
   const [groups, setGroups] = useState<Group[]>(() => groupsService.loadGroups());
   const [payments, setPayments] = useState<PaymentRecord[]>(() => paymentsService.loadPayments());
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => attendanceService.loadAttendance());
   const [sessions, setSessions] = useState<LessonSession[]>(() => sessionsService.loadSessions());
 
-  // Synchronize data persistence safely
-  useEffect(() => {
-    studentsService.persistStudents(students);
-  }, [students]);
+  // Loading & Sync States
+  const [isLoading, setIsLoading] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
-  useEffect(() => {
-    groupsService.persistGroups(groups);
-  }, [groups]);
-
-  useEffect(() => {
-    paymentsService.persistPayments(payments);
-  }, [payments]);
-
-  useEffect(() => {
-    attendanceService.persistAttendance(attendance);
-  }, [attendance]);
+  // Request Sequence Counter to prevent async race conditions
+  const fetchRequestIdRef = useRef<number>(0);
 
   // Notifications
   const [notification, setNotification] = useState<{
@@ -88,6 +109,7 @@ export default function App() {
   const [selectedGroupForStudents, setSelectedGroupForStudents] = useState<Group | null>(null);
 
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentToEdit, setPaymentToEdit] = useState<PaymentRecord | null>(null);
   const [preselectedStudentForPayment, setPreselectedStudentForPayment] = useState<string | undefined>(undefined);
 
   const [attendanceHistoryModalOpen, setAttendanceHistoryModalOpen] = useState(false);
@@ -110,38 +132,269 @@ export default function App() {
     setConfirmModal((prev) => ({ ...prev, isOpen: false }));
   };
 
+  // Central Initial Data Fetch from Supabase with race condition protection
+  const loadAllDataFromSupabase = useCallback(async (silent = false) => {
+    const currentRequestId = ++fetchRequestIdRef.current;
+    if (!silent) setIsLoading(true);
+    try {
+      const [studentsRes, groupsRes, paymentsRes, attendanceRes, sessionsRes] = await Promise.all([
+        studentsService.fetchStudents(),
+        groupsService.fetchGroups(),
+        paymentsService.fetchPayments(),
+        attendanceService.fetchAttendance(),
+        sessionsService.fetchSessions(),
+      ]);
+
+      // Guard against race condition: ignore stale response if a newer fetch was initiated
+      if (currentRequestId !== fetchRequestIdRef.current) {
+        return;
+      }
+
+      if (studentsRes.data) setStudents(studentsRes.data);
+      if (groupsRes.data) setGroups(groupsRes.data);
+      if (paymentsRes.data) setPayments(paymentsRes.data);
+      if (attendanceRes.data) setAttendance(attendanceRes.data);
+      if (sessionsRes.data) setSessions(sessionsRes.data);
+
+      // Report any error non-blockingly with Arabic notification
+      const errors = [
+        studentsRes.error,
+        groupsRes.error,
+        paymentsRes.error,
+        attendanceRes.error,
+        sessionsRes.error,
+      ].filter(Boolean);
+
+      if (errors.length > 0 && isSupabaseConfigured) {
+        setSyncError(errors[0] || 'تعذر الاتصال بـ Supabase');
+      } else {
+        setSyncError(null);
+      }
+    } catch {
+      if (currentRequestId === fetchRequestIdRef.current) {
+        setSyncError('تعذر جلب البيانات من الخادم، يرجى التحقق من اتصال الإنترنت.');
+      }
+    } finally {
+      if (currentRequestId === fetchRequestIdRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  // Fetch on login / mount and setup unified Realtime multi-table sync
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    // Load fresh data immediately upon login / reload
+    loadAllDataFromSupabase();
+
+    const handleOnline = () => {
+      showNotification('تمت استعادة الاتصال بالإنترنت، جاري تحديث البيانات تلقائياً...', 'info');
+      loadAllDataFromSupabase(true);
+    };
+
+    const handleOffline = () => {
+      setSyncError('انقطع الاتصال بالإنترنت. سيتم تحديث البيانات تلقائياً عند عودة الاتصال.');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Setup unified Supabase Realtime multi-table sync across all devices
+    const cleanupRealtime = setupRealtimeSync({
+      onStudentsChange: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const student = dbMapper.toStudent(raw);
+          setStudents((prev) => {
+            const exists = prev.some((s) => s.id === student.id);
+            if (exists) {
+              return prev.map((s) => (s.id === student.id ? { ...s, ...student } : s));
+            }
+            return [student, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const student = dbMapper.toStudent(raw);
+          setStudents((prev) =>
+            prev.map((s) =>
+              s.id === student.id
+                ? { ...s, ...student, groupName: student.groupName || s.groupName }
+                : s
+            )
+          );
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = payload.oldRecord?.id;
+          if (deletedId) {
+            setStudents((prev) => prev.filter((s) => s.id !== deletedId));
+          }
+        }
+      },
+
+      onGroupsChange: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const group = dbMapper.toGroup(raw);
+          setGroups((prev) => {
+            const exists = prev.some((g) => g.id === group.id);
+            if (exists) {
+              return prev.map((g) => (g.id === group.id ? group : g));
+            }
+            return [...prev, group];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const group = dbMapper.toGroup(raw);
+          setGroups((prev) => prev.map((g) => (g.id === group.id ? group : g)));
+          // Cascade group updates to students
+          setStudents((prev) =>
+            prev.map((s) =>
+              s.groupId === group.id
+                ? { ...s, groupName: group.name, course: group.course }
+                : s
+            )
+          );
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = payload.oldRecord?.id;
+          if (deletedId) {
+            setGroups((prev) => prev.filter((g) => g.id !== deletedId));
+          }
+        }
+      },
+
+      onPaymentsChange: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const payment = dbMapper.toPayment(raw);
+          setPayments((prev) => {
+            const exists = prev.some((p) => p.id === payment.id);
+            if (exists) {
+              return prev.map((p) => (p.id === payment.id ? payment : p));
+            }
+            return [payment, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const payment = dbMapper.toPayment(raw);
+          setPayments((prev) => prev.map((p) => (p.id === payment.id ? payment : p)));
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = payload.oldRecord?.id;
+          if (deletedId) {
+            setPayments((prev) => prev.filter((p) => p.id !== deletedId));
+          }
+        }
+      },
+
+      onAttendanceChange: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const att = dbMapper.toAttendance(raw);
+          setAttendance((prev) => {
+            const exists = prev.some((a) => a.id === att.id);
+            if (exists) {
+              return prev.map((a) => (a.id === att.id ? att : a));
+            }
+            return [att, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const att = dbMapper.toAttendance(raw);
+          setAttendance((prev) => prev.map((a) => (a.id === att.id ? att : a)));
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = payload.oldRecord?.id;
+          if (deletedId) {
+            setAttendance((prev) => prev.filter((a) => a.id !== deletedId));
+          }
+        }
+      },
+
+      onSessionsChange: (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const ses = dbMapper.toSession(raw);
+          setSessions((prev) => {
+            const exists = prev.some((s) => s.id === ses.id);
+            if (exists) {
+              return prev.map((s) => (s.id === ses.id ? ses : s));
+            }
+            return [ses, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const raw = payload.newRecord;
+          if (!raw) return;
+          const ses = dbMapper.toSession(raw);
+          setSessions((prev) => prev.map((s) => (s.id === ses.id ? ses : s)));
+        } else if (payload.eventType === 'DELETE') {
+          const deletedId = payload.oldRecord?.id;
+          if (deletedId) {
+            setSessions((prev) => prev.filter((s) => s.id !== deletedId));
+          }
+        }
+      },
+
+      onStatusChange: (status, message) => {
+        if (status === 'CONNECTED') {
+          setSyncError(null);
+        } else if (status === 'DISCONNECTED') {
+          setSyncError(message || 'انقطع اتصال المزامنة اللحظية مع الخادم');
+        }
+      },
+    });
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      cleanupRealtime();
+    };
+  }, [isLoggedIn, loadAllDataFromSupabase]);
+
   // --- Student Handlers ---
-  const handleSaveStudent = (
+  const handleSaveStudent = async (
     data: Omit<Student, 'id' | 'remainingAmount' | 'joinedDate'> & { id?: string }
   ) => {
     const remaining = Math.max(0, data.subscriptionFee - data.paidAmount);
 
     if (data.id) {
-      // Edit existing
+      // Edit existing student
+      const studentId = data.id;
+      const updates: Partial<Student> = {
+        name: data.name,
+        phone: data.phone,
+        groupId: data.groupId,
+        groupName: data.groupName,
+        course: data.course,
+        subscriptionFee: data.subscriptionFee,
+        paidAmount: data.paidAmount,
+        remainingAmount: remaining,
+        status: data.status,
+        notes: data.notes,
+      };
+
+      // Optimistic UI update
       setStudents((prev) =>
-        prev.map((s) =>
-          s.id === data.id
-            ? {
-                ...s,
-                code: s.code || data.code || ('ST-' + s.id.replace('std-', '100')),
-                name: data.name,
-                phone: data.phone,
-                groupId: data.groupId,
-                groupName: data.groupName,
-                course: data.course,
-                subscriptionFee: data.subscriptionFee,
-                paidAmount: data.paidAmount,
-                remainingAmount: remaining,
-                status: data.status,
-                notes: data.notes,
-              }
-            : s
-        )
+        prev.map((s) => (s.id === studentId ? { ...s, ...updates } : s))
       );
-      showNotification(`تم تحديث بيانات الطالب "${data.name}" بنجاح`);
+
+      // Async DB call
+      const res = await studentsService.updateStudent(studentId, updates);
+      if (res.error) {
+        showNotification(res.error, 'error');
+        loadAllDataFromSupabase(true);
+      } else {
+        showNotification(`تم تحديث بيانات الطالب "${data.name}" بنجاح`);
+      }
     } else {
-      // Add new
-      const newId = 'std-' + (Date.now() % 100000);
+      // Add new student with standard valid UUID
+      const newId = generateUUID();
       const today = new Date().toISOString().split('T')[0];
       const newStudent: Student = {
         id: newId,
@@ -159,12 +412,13 @@ export default function App() {
         joinedDate: today,
       };
 
+      // Optimistic UI update
       setStudents((prev) => [newStudent, ...prev]);
 
       // If initial payment made, record it
       if (data.paidAmount > 0) {
         const newPay: PaymentRecord = {
-          id: 'pay-' + Date.now(),
+          id: generateUUID(),
           studentId: newId,
           studentName: data.name,
           amount: data.paidAmount,
@@ -173,6 +427,7 @@ export default function App() {
           notes: 'دفعة أولى عند التسجيل',
         };
         setPayments((prev) => [newPay, ...prev]);
+        paymentsService.insertPayment(newPay);
       }
 
       // Update group student count
@@ -181,8 +436,21 @@ export default function App() {
           g.id === data.groupId ? { ...g, studentCount: g.studentCount + 1 } : g
         )
       );
+      const targetGroup = groups.find((g) => g.id === data.groupId);
+      if (targetGroup) {
+        groupsService.updateGroup(targetGroup.id, {
+          studentCount: targetGroup.studentCount + 1,
+        });
+      }
 
-      showNotification(`تمت إضافة الطالب "${data.name}" بنجاح`);
+      // Async DB call
+      const res = await studentsService.insertStudent(newStudent);
+      if (res.error) {
+        showNotification(res.error, 'error');
+        loadAllDataFromSupabase(true);
+      } else {
+        showNotification(`تمت إضافة الطالب "${data.name}" بنجاح`);
+      }
     }
 
     setStudentModalOpen(false);
@@ -194,9 +462,9 @@ export default function App() {
       isOpen: true,
       title: 'حذف الطالب',
       message: `هل أنت متأكد من رغبتك في حذف الطالب "${student.name}" من النظام؟ لا يمكن التراجع عن هذا الإجراء.`,
-      onConfirm: () => {
+      onConfirm: async () => {
+        // Optimistic UI update
         setStudents((prev) => prev.filter((s) => s.id !== student.id));
-        // Update group count
         setGroups((prev) =>
           prev.map((g) =>
             g.id === student.groupId
@@ -205,43 +473,63 @@ export default function App() {
           )
         );
         closeConfirmModal();
-        showNotification(`تم حذف الطالب "${student.name}" بنجاح`, 'info');
+
+        // Async DB call
+        const res = await studentsService.removeStudent(student.id);
+        if (res.error) {
+          showNotification(res.error, 'error');
+          loadAllDataFromSupabase(true);
+        } else {
+          showNotification(`تم حذف الطالب "${student.name}" بنجاح`, 'info');
+        }
+
+        // Update group count in DB
+        const group = groups.find((g) => g.id === student.groupId);
+        if (group) {
+          groupsService.updateGroup(group.id, {
+            studentCount: Math.max(0, group.studentCount - 1),
+          });
+        }
       },
     });
   };
 
   // --- Group Handlers ---
-  const handleSaveGroup = (
+  const handleSaveGroup = async (
     data: Omit<Group, 'id' | 'studentCount'> & { id?: string }
   ) => {
     if (data.id) {
+      const groupId = data.id;
+      const updates: Partial<Group> = {
+        name: data.name,
+        course: data.course,
+        days: data.days,
+        time: data.time,
+        fee: data.fee,
+        notes: data.notes,
+      };
+
       setGroups((prev) =>
-        prev.map((g) =>
-          g.id === data.id
-            ? {
-                ...g,
-                name: data.name,
-                course: data.course,
-                days: data.days,
-                time: data.time,
-                fee: data.fee,
-                notes: data.notes,
-              }
-            : g
-        )
+        prev.map((g) => (g.id === groupId ? { ...g, ...updates } : g))
       );
-      // Also update groupName in students belonging to this group
       setStudents((prev) =>
         prev.map((s) =>
-          s.groupId === data.id
+          s.groupId === groupId
             ? { ...s, groupName: data.name, course: data.course }
             : s
         )
       );
-      showNotification(`تم تحديث المجموعة "${data.name}" بنجاح`);
+
+      const res = await groupsService.updateGroup(groupId, updates);
+      if (res.error) {
+        showNotification(res.error, 'error');
+        loadAllDataFromSupabase(true);
+      } else {
+        showNotification(`تم تحديث المجموعة "${data.name}" بنجاح`);
+      }
     } else {
       const newGroup: Group = {
-        id: 'grp-' + (Date.now() % 100000),
+        id: generateUUID(),
         name: data.name,
         course: data.course,
         days: data.days,
@@ -250,9 +538,18 @@ export default function App() {
         studentCount: 0,
         notes: data.notes,
       };
+
       setGroups((prev) => [...prev, newGroup]);
-      showNotification(`تمت إضافة المجموعة "${data.name}" بنجاح`);
+
+      const res = await groupsService.insertGroup(newGroup);
+      if (res.error) {
+        showNotification(res.error, 'error');
+        loadAllDataFromSupabase(true);
+      } else {
+        showNotification(`تمت إضافة المجموعة "${data.name}" بنجاح`);
+      }
     }
+
     setGroupModalOpen(false);
     setGroupToEdit(null);
   };
@@ -268,59 +565,177 @@ export default function App() {
       isOpen: true,
       title: 'حذف المجموعة',
       message: `هل أنت متأكد من رغبتك في حذف مجموعة "${group.name}"؟${warning}`,
-      onConfirm: () => {
+      onConfirm: async () => {
         setGroups((prev) => prev.filter((g) => g.id !== group.id));
         closeConfirmModal();
-        showNotification(`تم حذف المجموعة "${group.name}" بنجاح`, 'info');
+
+        const res = await groupsService.removeGroup(group.id);
+        if (res.error) {
+          showNotification(res.error, 'error');
+          loadAllDataFromSupabase(true);
+        } else {
+          showNotification(`تم حذف المجموعة "${group.name}" بنجاح`, 'info');
+        }
       },
     });
   };
 
   // --- Attendance Handlers ---
-  const handleSaveAttendance = (
+  const handleSaveAttendance = async (
     groupId: string,
     date: string,
-    records: { studentId: string; status: 'حاضر' | 'غائب' }[]
+    records: { studentId: string; status: AttendanceStatus; notes?: string }[]
   ) => {
     const group = groups.find((g) => g.id === groupId);
     const groupName = group ? group.name : '';
 
+    const newRecords: AttendanceRecord[] = records.map((rec) => {
+      const st = students.find((s) => s.id === rec.studentId);
+      return {
+        id: generateUUID(),
+        studentId: rec.studentId,
+        studentName: st ? st.name : '',
+        groupId,
+        groupName,
+        date,
+        status: rec.status,
+        notes: rec.notes,
+      };
+    });
+
+    // Optimistic UI update
     setAttendance((prev) => {
-      // Remove previous records for this group and date to overwrite
       const otherRecords = prev.filter(
         (r) => !(r.groupId === groupId && r.date === date)
       );
-
-      const newRecords: AttendanceRecord[] = records.map((rec) => {
-        const st = students.find((s) => s.id === rec.studentId);
-        return {
-          id: `att-${Date.now()}-${rec.studentId}`,
-          studentId: rec.studentId,
-          studentName: st ? st.name : '',
-          groupId,
-          groupName,
-          date,
-          status: rec.status,
-        };
-      });
-
       return [...otherRecords, ...newRecords];
     });
 
-    showNotification(`تم حفظ كشف الحضور لتاريخ ${date} بنجاح`);
+    // Async DB Call
+    const res = await attendanceService.saveAttendanceBatch(groupId, date, records);
+    if (res.error) {
+      showNotification(res.error, 'error');
+      loadAllDataFromSupabase(true);
+    } else {
+      showNotification(`تم حفظ كشف الحضور لتاريخ ${date} بنجاح`);
+    }
   };
 
   // --- Payment Handlers ---
-  const handleSavePayment = (paymentData: {
+  const handleOpenEditPayment = (payment: PaymentRecord) => {
+    setPaymentToEdit(payment);
+    setPreselectedStudentForPayment(payment.studentId);
+    setPaymentModalOpen(true);
+  };
+
+  const handleDeletePayment = (paymentId: string) => {
+    const payment = payments.find((p) => p.id === paymentId);
+    if (!payment) return;
+    setConfirmModal({
+      isOpen: true,
+      title: 'حذف دفعة مسجلة',
+      message: `هل أنت متأكد من حذف الدفعة بقيمة ${payment.amount} ج.م للطالب "${payment.studentName}"؟`,
+      onConfirm: async () => {
+        setPayments((prev) => prev.filter((p) => p.id !== paymentId));
+
+        // Deduct payment from student's paidAmount and recalculate remaining
+        setStudents((prev) =>
+          prev.map((s) => {
+            if (s.id === payment.studentId) {
+              const newPaid = Math.max(0, s.paidAmount - payment.amount);
+              const newRemaining = Math.max(0, s.subscriptionFee - newPaid);
+              studentsService.updateStudent(s.id, {
+                paidAmount: newPaid,
+                remainingAmount: newRemaining,
+              });
+              return {
+                ...s,
+                paidAmount: newPaid,
+                remainingAmount: newRemaining,
+              };
+            }
+            return s;
+          })
+        );
+
+        closeConfirmModal();
+        showNotification('تم حذف الدفعة بنجاح');
+        const res = await paymentsService.removePayment(paymentId);
+        if (res.error) {
+          showNotification(res.error, 'error');
+          loadAllDataFromSupabase(true);
+        }
+      },
+    });
+  };
+
+  const handleSavePayment = async (paymentData: {
     studentId: string;
     studentName: string;
     amount: number;
     date: string;
     paymentMethod: any;
     notes: string;
+    id?: string;
   }) => {
+    if (paymentData.id) {
+      // Edit mode: calculate difference from previous payment amount
+      const oldPayment = payments.find((p) => p.id === paymentData.id);
+      const oldAmount = oldPayment ? Number(oldPayment.amount) || 0 : 0;
+      const diff = Number(paymentData.amount) - oldAmount;
+
+      const updatedPayment: PaymentRecord = {
+        id: paymentData.id,
+        studentId: paymentData.studentId,
+        studentName: paymentData.studentName,
+        amount: paymentData.amount,
+        date: paymentData.date,
+        paymentMethod: paymentData.paymentMethod,
+        notes: paymentData.notes,
+      };
+
+      setPayments((prev) =>
+        prev.map((p) => (p.id === paymentData.id ? updatedPayment : p))
+      );
+
+      // Reflect change immediately on student's financial status
+      if (diff !== 0) {
+        setStudents((prev) =>
+          prev.map((s) => {
+            if (s.id === paymentData.studentId) {
+              const newPaid = Math.max(0, s.paidAmount + diff);
+              const newRemaining = Math.max(0, s.subscriptionFee - newPaid);
+              studentsService.updateStudent(s.id, {
+                paidAmount: newPaid,
+                remainingAmount: newRemaining,
+              });
+              return {
+                ...s,
+                paidAmount: newPaid,
+                remainingAmount: newRemaining,
+              };
+            }
+            return s;
+          })
+        );
+      }
+
+      setPaymentModalOpen(false);
+      setPaymentToEdit(null);
+
+      const res = await paymentsService.updatePayment(paymentData.id, updatedPayment);
+      if (res.error) {
+        showNotification(res.error, 'error');
+        loadAllDataFromSupabase(true);
+      } else {
+        showNotification(`تم تعديل الدفعة للطالب "${paymentData.studentName}" بنجاح`);
+      }
+      return;
+    }
+
+    // New payment mode
     const newPayment: PaymentRecord = {
-      id: 'pay-' + Date.now(),
+      id: generateUUID(),
       studentId: paymentData.studentId,
       studentName: paymentData.studentName,
       amount: paymentData.amount,
@@ -329,14 +744,18 @@ export default function App() {
       notes: paymentData.notes,
     };
 
+    // Optimistic update
     setPayments((prev) => [newPayment, ...prev]);
 
-    // Update student paid and remaining amounts
+    let updatedPaid = 0;
+    let updatedRemaining = 0;
     setStudents((prev) =>
       prev.map((s) => {
         if (s.id === paymentData.studentId) {
           const newPaid = s.paidAmount + paymentData.amount;
           const newRemaining = Math.max(0, s.subscriptionFee - newPaid);
+          updatedPaid = newPaid;
+          updatedRemaining = newRemaining;
           return {
             ...s,
             paidAmount: newPaid,
@@ -348,9 +767,26 @@ export default function App() {
     );
 
     setPaymentModalOpen(false);
-    showNotification(
-      `تم تسجيل دفعة بقيمة ${paymentData.amount} ج.م للطالب "${paymentData.studentName}" بنجاح`
-    );
+    setPaymentToEdit(null);
+
+    // Save payment to DB
+    const res = await paymentsService.insertPayment(newPayment);
+    if (res.error) {
+      showNotification(res.error, 'error');
+      loadAllDataFromSupabase(true);
+    } else {
+      showNotification(
+        `تم تسجيل دفعة بقيمة ${paymentData.amount} ج.م للطالب "${paymentData.studentName}" بنجاح`
+      );
+    }
+
+    // Sync student dues to DB
+    if (paymentData.studentId) {
+      studentsService.updateStudent(paymentData.studentId, {
+        paidAmount: updatedPaid,
+        remainingAmount: updatedRemaining,
+      });
+    }
   };
 
   // Switch student attendance history modal
@@ -361,14 +797,7 @@ export default function App() {
 
   // If user is not logged in, display the dedicated Login Page matching the reference design
   if (!isLoggedIn) {
-    return (
-      <LoginPage
-        onLoginSuccess={() => {
-          setIsLoggedIn(true);
-          showNotification('تم تسجيل الدخول بنجاح إلى نظام زين لإدارة الدروس والسناتر');
-        }}
-      />
-    );
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
@@ -390,10 +819,7 @@ export default function App() {
         setMobileMenuOpen={setMobileMenuOpen}
         studentCount={students.length}
         groupCount={groups.length}
-        onLogout={() => {
-          setIsLoggedIn(false);
-          showNotification('تم تسجيل الخروج بنجاح', 'info');
-        }}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area (offset left for 260px sidebar on desktop) */}
@@ -408,11 +834,35 @@ export default function App() {
               setCurrentPage('search');
             }
           }}
-          onLogout={() => {
-            setIsLoggedIn(false);
-            showNotification('تم تسجيل الخروج بنجاح', 'info');
-          }}
+          onLogout={handleLogout}
         />
+
+        {/* Global Supabase Sync & Loading Bar */}
+        {isLoading && (
+          <div className="bg-sky-950/40 border-b border-sky-800/30 px-4 py-2 flex items-center justify-between text-xs text-sky-300">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+              <span>جاري مزامنة وتحديث البيانات مع Supabase...</span>
+            </div>
+          </div>
+        )}
+
+        {syncError && !isLoading && (
+          <div className="bg-amber-950/40 border-b border-amber-800/30 px-4 py-2 flex items-center justify-between text-xs text-amber-300">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{syncError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadAllDataFromSupabase()}
+              className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>إعادة المحاولة</span>
+            </button>
+          </div>
+        )}
 
         <main className="flex-1 p-4 sm:p-6 lg:p-7 max-w-[1500px] w-full mx-auto">
           {/* Page Routing */}
@@ -427,6 +877,11 @@ export default function App() {
                 setPreselectedStudentForPayment(undefined);
                 setPaymentModalOpen(true);
               }}
+              students={students}
+              groups={groups}
+              payments={payments}
+              sessions={sessions}
+              attendance={attendance}
             />
           )}
 
@@ -485,8 +940,11 @@ export default function App() {
               students={students}
               onOpenRecordPayment={() => {
                 setPreselectedStudentForPayment(undefined);
+                setPaymentToEdit(null);
                 setPaymentModalOpen(true);
               }}
+              onEditPayment={handleOpenEditPayment}
+              onDeletePayment={handleDeletePayment}
             />
           )}
 
@@ -500,6 +958,20 @@ export default function App() {
               groups={groups}
               payments={payments}
               attendance={attendance}
+              onViewStudent={(student) => {
+                setStudentToView(student);
+                setViewStudentModalOpen(true);
+              }}
+              onOpenViewStudentsInGroup={(group) => {
+                setSelectedGroupForStudents(group);
+                setGroupStudentsModalOpen(true);
+              }}
+              onViewStudentAttendance={handleOpenAttendanceHistory}
+              onOpenRecordPayment={(student) => {
+                setPreselectedStudentForPayment(student.id);
+                setPaymentToEdit(null);
+                setPaymentModalOpen(true);
+              }}
             />
           )}
 
@@ -507,7 +979,9 @@ export default function App() {
             <SearchPage
               students={students}
               groups={groups}
+              payments={payments}
               attendanceRecords={attendance}
+              initialSearchTerm={topBarSearchTerm}
               onViewStudent={(student) => {
                 setStudentToView(student);
                 setViewStudentModalOpen(true);
@@ -532,11 +1006,20 @@ export default function App() {
 
       <StudentDetailModal
         student={studentToView}
+        payments={payments}
+        attendanceRecords={attendance}
         onClose={() => {
           setViewStudentModalOpen(false);
           setStudentToView(null);
         }}
         onOpenAttendanceHistory={handleOpenAttendanceHistory}
+        onOpenPaymentModal={(st) => {
+          setPreselectedStudentForPayment(st.id);
+          setPaymentToEdit(null);
+          setPaymentModalOpen(true);
+        }}
+        onEditPayment={handleOpenEditPayment}
+        onDeletePayment={handleDeletePayment}
       />
 
       <GroupFormModal
@@ -567,8 +1050,10 @@ export default function App() {
         isOpen={paymentModalOpen}
         students={students}
         preselectedStudentId={preselectedStudentForPayment}
+        paymentToEdit={paymentToEdit}
         onClose={() => {
           setPaymentModalOpen(false);
+          setPaymentToEdit(null);
           setPreselectedStudentForPayment(undefined);
         }}
         onSave={handleSavePayment}
