@@ -1,0 +1,6 @@
+{
+  "name": "زين لإدارة الدروس والسناتر",
+  "description": "واجهة نظام ويب بسيطة وسريعة لإدارة مجموعات الدروس والطلاب والحضور والمدفوعات لسنتر تعليمي صغير.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
