@@ -39,6 +39,7 @@ import { ExpensesPage } from './pages/ExpensesPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { LoginPage } from './pages/LoginPage';
 import { TopBar } from './components/TopBar';
+import { soundService } from './utils/soundService';
 
 export default function App() {
   // Authentication State with persistent browser session across refreshes
@@ -57,6 +58,8 @@ export default function App() {
       // ignore
     }
     setIsLoggedIn(true);
+    soundService.init();
+    soundService.playStartup();
     showNotification('تم تسجيل الدخول بنجاح إلى نظام زين لإدارة الدروس والسناتر');
   }, []);
 
@@ -74,6 +77,16 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [topBarSearchTerm, setTopBarSearchTerm] = useState('');
+
+  const handleNavigate = useCallback((page: PageId) => {
+    setCurrentPage((prev) => {
+      if (prev !== page) {
+        soundService.playNavigation();
+      }
+      return page;
+    });
+    setMobileMenuOpen(false);
+  }, []);
 
   // Core Data State (Loaded safely with initial memory baseline, then synced via Supabase)
   const [students, setStudents] = useState<Student[]>(() => studentsService.loadStudents());
@@ -98,6 +111,7 @@ export default function App() {
 
   const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setNotification({ message, type });
+    soundService.playNotification(type);
     setTimeout(() => {
       setNotification(null);
     }, 4000);
@@ -838,7 +852,7 @@ export default function App() {
       {/* Main Navigation: Desktop Sidebar (Right side matching Reference Image) + Mobile Drawer */}
       <Navigation
         currentPage={currentPage}
-        onSelectPage={setCurrentPage}
+        onSelectPage={handleNavigate}
         mobileMenuOpen={mobileMenuOpen}
         setMobileMenuOpen={setMobileMenuOpen}
         studentCount={students.length}
@@ -855,11 +869,11 @@ export default function App() {
           onSearchChange={setTopBarSearchTerm}
           onSearchSubmit={() => {
             if (topBarSearchTerm.trim()) {
-              setCurrentPage('search');
+              handleNavigate('search');
             }
           }}
           onLogout={handleLogout}
-          onNavigate={setCurrentPage}
+          onNavigate={handleNavigate}
           managerName={centerSettings.managerName || 'Miss Sharbat'}
         />
 
@@ -894,7 +908,7 @@ export default function App() {
           {/* Page Routing */}
           {currentPage === 'dashboard' && (
             <Dashboard
-              onNavigate={setCurrentPage}
+              onNavigate={handleNavigate}
               onOpenAddStudent={() => {
                 setStudentToEdit(null);
                 setStudentModalOpen(true);

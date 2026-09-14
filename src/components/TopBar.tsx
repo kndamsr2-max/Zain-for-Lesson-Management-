@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Menu,
   Search,
@@ -15,9 +15,12 @@ import {
   CreditCard,
   LogOut,
   ChevronDown,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { SupabaseStatusModal } from './SupabaseStatusModal';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
+import { soundService } from '../utils/soundService';
 import { PageId } from '../types';
 
 interface TopBarProps {
@@ -43,6 +46,24 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [profileOpen, setProfileOpen] = useState(false);
   const [supabaseModalOpen, setSupabaseModalOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => soundService.isEnabled());
+
+  useEffect(() => {
+    const handlePrefChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && typeof customEvent.detail.enabled === 'boolean') {
+        setSoundEnabled(customEvent.detail.enabled);
+      }
+    };
+    window.addEventListener('zain-sound-preferences-changed', handlePrefChange);
+    return () => window.removeEventListener('zain-sound-preferences-changed', handlePrefChange);
+  }, []);
+
+  const handleToggleSound = () => {
+    const nextState = !soundEnabled;
+    setSoundEnabled(nextState);
+    soundService.setEnabled(nextState);
+  };
 
   const notifications = [
     {
@@ -135,6 +156,29 @@ export const TopBar: React.FC<TopBarProps> = ({
           <span className="text-[11px]">
             {isSupabaseConfigured ? 'متصل' : 'قاعدة البيانات'}
           </span>
+        </button>
+
+        {/* Sound Toggle Icon with instant haptic/audio feedback */}
+        <button
+          id="topbar-sound-toggle-btn"
+          type="button"
+          onClick={handleToggleSound}
+          className={`p-2 rounded-xl transition-all cursor-pointer relative ${
+            soundEnabled
+              ? 'text-blue-600 hover:bg-blue-50 bg-blue-50/50'
+              : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+          }`}
+          title={soundEnabled ? 'أصوات النظام: مفعلة (انقر للكتم)' : 'أصوات النظام: مكتومة (انقر للتشغيل)'}
+          aria-label="التحكم بأصوات النظام"
+        >
+          {soundEnabled ? (
+            <Volume2 className="w-4.5 h-4.5" />
+          ) : (
+            <VolumeX className="w-4.5 h-4.5 text-slate-400" />
+          )}
+          {soundEnabled && (
+            <span className="absolute top-1.5 left-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+          )}
         </button>
 
         {/* Sun / Moon Theme Toggle Icon */}

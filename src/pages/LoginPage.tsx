@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { SupabaseStatusModal } from '../components/SupabaseStatusModal';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
+import { soundService } from '../utils/soundService';
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
@@ -51,6 +52,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     const trimmedPass = password.trim();
 
     if (!trimmedUser || !trimmedPass) {
+      soundService.playNotification('error');
       setErrorMessage('يرجى إدخال اسم المستخدم وكلمة المرور للمتابعة');
       return;
     }
@@ -62,11 +64,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       trimmedPass === '123456' || trimmedPass === 'admin123' || trimmedPass === 'zain2026';
 
     if (!isValidUser || !isValidPass) {
+      soundService.playNotification('error');
       setErrorMessage(
         'اسم المستخدم أو كلمة المرور غير صحيحة. يرجى استخدام بيانات الدخول المعتمدة (admin / 123456).'
       );
       return;
     }
+
+    // Play startup welcoming sound for system opening
+    soundService.init();
+    soundService.playStartup();
 
     setIsLoading(true);
     setTimeout(() => {

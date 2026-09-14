@@ -30,8 +30,15 @@ import {
   ArrowUpDown,
   X,
   Radio,
+  Volume2,
+  VolumeX,
+  Sparkles,
+  Sliders,
+  Music,
+  BellRing,
 } from 'lucide-react';
 import { CenterSettings, StaticLink } from '../types';
+import { soundService } from '../utils/soundService';
 import {
   checkSupabaseConnection,
   ConnectionTestResult,
@@ -59,7 +66,46 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   isSupabaseConnected,
   onReloadAllData,
 }) => {
-  const [activeTab, setActiveTab] = useState<'connection' | 'links' | 'center'>('connection');
+  const [activeTab, setActiveTab] = useState<'connection' | 'links' | 'center' | 'sounds'>('connection');
+
+  // Audio settings state
+  const [soundPrefs, setSoundPrefs] = useState(() => soundService.getPreferences());
+
+  useEffect(() => {
+    const handlePrefChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setSoundPrefs({ ...customEvent.detail });
+      }
+    };
+    window.addEventListener('zain-sound-preferences-changed', handlePrefChange);
+    return () => window.removeEventListener('zain-sound-preferences-changed', handlePrefChange);
+  }, []);
+
+  const handleToggleSoundMaster = (enabled: boolean) => {
+    soundService.setEnabled(enabled);
+    setSoundPrefs((prev) => ({ ...prev, enabled }));
+  };
+
+  const handleToggleTouch = (touchEnabled: boolean) => {
+    soundService.setTouchEnabled(touchEnabled);
+    setSoundPrefs((prev) => ({ ...prev, touchEnabled }));
+  };
+
+  const handleToggleNav = (navigationEnabled: boolean) => {
+    soundService.setNavigationEnabled(navigationEnabled);
+    setSoundPrefs((prev) => ({ ...prev, navigationEnabled }));
+  };
+
+  const handleToggleNotif = (notificationsEnabled: boolean) => {
+    soundService.setNotificationsEnabled(notificationsEnabled);
+    setSoundPrefs((prev) => ({ ...prev, notificationsEnabled }));
+  };
+
+  const handleVolumeChange = (vol: number) => {
+    soundService.setVolume(vol);
+    setSoundPrefs((prev) => ({ ...prev, volume: vol }));
+  };
 
   // Form states for Center Settings
   const [formData, setFormData] = useState<CenterSettings>({ ...settings });
@@ -383,6 +429,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         >
           <Building2 className="w-4 h-4" />
           <span>بيانات المركز والنظام</span>
+        </button>
+
+        <button
+          id="btn-tab-sounds"
+          type="button"
+          onClick={() => setActiveTab('sounds')}
+          className={`flex-1 min-w-[140px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'sounds'
+              ? 'bg-[#0066ff] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Volume2 className="w-4 h-4" />
+          <span>المؤثرات الصوتية</span>
         </button>
       </div>
 
@@ -920,6 +980,267 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             </button>
           </div>
         </form>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 4: المؤثرات الصوتية وأصوات التنبيه واللمس                               */}
+      {/* ========================================================================= */}
+      {activeTab === 'sounds' && (
+        <div className="space-y-6" dir="rtl">
+          {/* Main Master Card */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0066ff] flex items-center justify-center">
+                    <Volume2 className="w-4.5 h-4.5" />
+                  </div>
+                  <h3 className="text-base font-black text-slate-800">
+                    أصوات ومؤثرات النظام الصوتية
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 max-w-2xl">
+                  توليد نغمات موسيقية رقمية مدمجة عبر تقنية Web Audio API عالية النقاء، متوافقة كلياً بدون الحاجة لأي ملفات إنترنت خارجية.
+                </p>
+              </div>
+
+              {/* Master Switch */}
+              <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200/80">
+                <span className="text-xs font-bold text-slate-700">
+                  {soundPrefs.enabled ? 'كافة الأصوات مفعلة' : 'الأصوات مكتومة بالكامل'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleSoundMaster(!soundPrefs.enabled)}
+                  className={`w-12 h-6.5 rounded-full transition-colors relative cursor-pointer focus:outline-none ${
+                    soundPrefs.enabled ? 'bg-[#0066ff]' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`block w-5 h-5 rounded-full bg-white shadow-xs transform transition-transform ${
+                      soundPrefs.enabled ? 'translate-x-1' : 'translate-x-6'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Volume Control */}
+            <div className="bg-slate-50/70 rounded-2xl border border-slate-200/60 p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs sm:text-sm font-bold text-slate-800">
+                    مستوى الصوت العام
+                  </span>
+                </div>
+                <span className="text-xs font-black text-[#0066ff] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 font-mono">
+                  {Math.round((soundPrefs.volume ?? 0.3) * 100)}%
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <VolumeX className="w-4 h-4 text-slate-400 shrink-0" />
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={soundPrefs.volume ?? 0.3}
+                  onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                  disabled={!soundPrefs.enabled}
+                  className="w-full accent-[#0066ff] cursor-pointer disabled:opacity-40"
+                />
+                <Volume2 className="w-4 h-4 text-blue-600 shrink-0" />
+              </div>
+            </div>
+
+            {/* Detailed Sound Toggles */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Touch & Click Sounds */}
+              <div className="p-4 rounded-2xl border border-slate-200/70 bg-white hover:border-blue-200 transition-all space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleTouch(!soundPrefs.touchEnabled)}
+                    disabled={!soundPrefs.enabled}
+                    className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer disabled:opacity-40 ${
+                      soundPrefs.touchEnabled && soundPrefs.enabled ? 'bg-[#0066ff]' : 'bg-slate-200'
+                    }`}
+                  >
+                    <span
+                      className={`block w-4.5 h-4.5 rounded-full bg-white shadow-xs transform transition-transform ${
+                        soundPrefs.touchEnabled && soundPrefs.enabled ? 'translate-x-1' : 'translate-x-5.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800">أصوات اللمس والنقر</h4>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    نغمة رقيقة وخفيفة جداً تصدر تلقائياً عند لمس الأزرار والروابط وعناصر الإدخال.
+                  </p>
+                </div>
+              </div>
+
+              {/* Navigation Sounds */}
+              <div className="p-4 rounded-2xl border border-slate-200/70 bg-white hover:border-blue-200 transition-all space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <Music className="w-4 h-4" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleNav(!soundPrefs.navigationEnabled)}
+                    disabled={!soundPrefs.enabled}
+                    className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer disabled:opacity-40 ${
+                      soundPrefs.navigationEnabled && soundPrefs.enabled ? 'bg-[#0066ff]' : 'bg-slate-200'
+                    }`}
+                  >
+                    <span
+                      className={`block w-4.5 h-4.5 rounded-full bg-white shadow-xs transform transition-transform ${
+                        soundPrefs.navigationEnabled && soundPrefs.enabled ? 'translate-x-1' : 'translate-x-5.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800">أصوات التنقل بين الشاشات</h4>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    نغمة تبديل انسيابية وناعمة ترافق الانتقال بين القوائم وصفحات النظام الرئيسية.
+                  </p>
+                </div>
+              </div>
+
+              {/* Notification Sounds */}
+              <div className="p-4 rounded-2xl border border-slate-200/70 bg-white hover:border-blue-200 transition-all space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                    <BellRing className="w-4 h-4" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleNotif(!soundPrefs.notificationsEnabled)}
+                    disabled={!soundPrefs.enabled}
+                    className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer disabled:opacity-40 ${
+                      soundPrefs.notificationsEnabled && soundPrefs.enabled ? 'bg-[#0066ff]' : 'bg-slate-200'
+                    }`}
+                  >
+                    <span
+                      className={`block w-4.5 h-4.5 rounded-full bg-white shadow-xs transform transition-transform ${
+                        soundPrefs.notificationsEnabled && soundPrefs.enabled ? 'translate-x-1' : 'translate-x-5.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800">أصوات التنبيه والإشعارات</h4>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    نغمات تنبيه واضحة ومميزة لحالات النجاح، حفظ البيانات، الدفعات، والتحذيرات.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Sound Preview Card */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-5">
+            <div>
+              <h3 className="text-sm sm:text-base font-black text-slate-800 flex items-center gap-2">
+                <Sparkles className="w-4.5 h-4.5 text-blue-600" />
+                <span>منصة تجربة الأصوات الحية</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                انقر على أي من الأزرار التالية للاستماع المباشر للنغمة ومعاينتها:
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {/* Test Startup */}
+              <button
+                type="button"
+                onClick={() => {
+                  soundService.init();
+                  soundService.playStartup();
+                }}
+                className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 text-center transition-all cursor-pointer group flex flex-col items-center gap-2"
+              >
+                <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Volume2 className="w-4.5 h-4.5" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">فتح النظام</span>
+                <span className="text-[10px] text-slate-500">نغمة الترحيب</span>
+              </button>
+
+              {/* Test Click */}
+              <button
+                type="button"
+                onClick={() => soundService.playClick()}
+                className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 text-center transition-all cursor-pointer group flex flex-col items-center gap-2"
+              >
+                <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-4.5 h-4.5" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">صوت اللمس</span>
+                <span className="text-[10px] text-slate-500">نقرة ناعمة</span>
+              </button>
+
+              {/* Test Nav */}
+              <button
+                type="button"
+                onClick={() => soundService.playNavigation()}
+                className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 text-center transition-all cursor-pointer group flex flex-col items-center gap-2"
+              >
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Music className="w-4.5 h-4.5" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">صوت التنقل</span>
+                <span className="text-[10px] text-slate-500">تبديل الشاشات</span>
+              </button>
+
+              {/* Test Notification */}
+              <button
+                type="button"
+                onClick={() => soundService.playNotification('info')}
+                className="p-3.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 text-center transition-all cursor-pointer group flex flex-col items-center gap-2"
+              >
+                <div className="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <BellRing className="w-4.5 h-4.5" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">إشعار عادي</span>
+                <span className="text-[10px] text-slate-500">تنبيه معلوماتي</span>
+              </button>
+
+              {/* Test Success */}
+              <button
+                type="button"
+                onClick={() => soundService.playSuccess()}
+                className="p-3.5 rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40 text-center transition-all cursor-pointer group flex flex-col items-center gap-2"
+              >
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <CheckCircle2 className="w-4.5 h-4.5" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">تأكيد ونجاح</span>
+                <span className="text-[10px] text-slate-500">حفظ ودفعات</span>
+              </button>
+
+              {/* Test Warning / Error */}
+              <button
+                type="button"
+                onClick={() => soundService.playNotification('error')}
+                className="p-3.5 rounded-xl border border-slate-200 hover:border-rose-300 hover:bg-rose-50/40 text-center transition-all cursor-pointer group flex flex-col items-center gap-2"
+              >
+                <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <AlertCircle className="w-4.5 h-4.5" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">تنبيه خطأ</span>
+                <span className="text-[10px] text-slate-500">تحذيرات النظام</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ========================================================================= */}
