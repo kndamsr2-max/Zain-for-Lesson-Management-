@@ -38,155 +38,148 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({ sessions, groups }) 
   });
 
   return (
-    <div className="space-y-5 select-none" dir="rtl">
+    <div className="space-y-6 select-none" dir="rtl">
       {/* Header section */}
-      <div className="bg-[#08152b] rounded-2xl border border-[#173054] p-5 shadow-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2.5">
-            <Calendar className="w-5 h-5 text-sky-400" />
-            <span>جدول الحصص القادمة</span>
+          <h2 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#0066ff] flex items-center justify-center border border-blue-100">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <span>جدول الحصص والمواعيد</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            جدول أسبوعي تفصيلي بمواعيد المجموعات، القاعات، وأعداد الطلاب
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            جدول تفصيلي بمواعيد الحصص والمجموعات الدراسية وأعداد الطلاب المسجلين
           </p>
         </div>
 
         {/* View mode toggle */}
-        <div className="flex items-center gap-2 bg-[#09152b] border border-[#1b3459] p-1 rounded-xl">
+        <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 p-1 rounded-xl">
           <button
             id="btn-schedule-view-cards"
             onClick={() => setViewMode('cards')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
               viewMode === 'cards'
-                ? 'bg-gradient-to-r from-[#0066ff] to-[#0052cc] text-white shadow-[0_2px_10px_rgba(0,102,255,0.3)]'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#0066ff] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            عرض بطاقات
+            بطاقات المواعيد
           </button>
           <button
             id="btn-schedule-view-table"
             onClick={() => setViewMode('table')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
               viewMode === 'table'
-                ? 'bg-gradient-to-r from-[#0066ff] to-[#0052cc] text-white shadow-[0_2px_10px_rgba(0,102,255,0.3)]'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#0066ff] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            عرض جدول
+            جدول منظم
           </button>
         </div>
       </div>
 
-      {/* Filter by Group */}
-      <div className="bg-[#08152b] rounded-2xl border border-[#173054] p-4 shadow-xl">
-        <div className="max-w-xs">
-          <label className="block text-xs font-semibold text-slate-300 mb-1">
+      {/* Filter by group */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="w-full sm:w-72">
+          <label className="block text-xs font-bold text-slate-600 mb-1.5">
             تصفية بالمجموعة
           </label>
           <select
-            id="schedule-group-filter"
+            id="schedule-filter-group"
             value={selectedGroupFilter}
             onChange={(e) => setSelectedGroupFilter(e.target.value)}
-            className="w-full px-3 py-2 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+            className="w-full px-3 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
           >
             <option value="">جميع المجموعات</option>
             {groups.map((grp) => (
-              <option key={grp.id} value={grp.id} className="bg-[#09152b] text-white">
+              <option key={grp.id} value={grp.id}>
                 {grp.name}
               </option>
             ))}
           </select>
         </div>
+
+        <div className="text-xs sm:text-sm font-bold text-slate-600">
+          إجمالي الحصص المجدولة:{' '}
+          <span className="text-[#0066ff] font-black">{filteredSessions.length}</span>
+        </div>
       </div>
 
-      {/* Content Rendering: Cards or Table */}
+      {/* Grid or Table display */}
       {filteredSessions.length === 0 ? (
-        <div className="bg-[#08152b] rounded-2xl border border-[#173054] p-12 text-center text-slate-400">
-          <CalendarDays className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <p className="text-sm font-semibold text-slate-300">لا توجد حصص مجدولة حالياً</p>
-          <p className="text-xs text-slate-500 mt-1">تأكد من إعداد مواعيد المجموعات أو اختر مجموعة أخرى</p>
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center text-slate-400 shadow-xs">
+          <CalendarDays className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+          <p className="text-sm font-bold text-slate-600">لا توجد حصص مجدولة حالياً</p>
+          <p className="text-xs text-slate-400 mt-1">تأكد من تسجيل مجموعات بأيام وتوقيتات محددة.</p>
         </div>
       ) : viewMode === 'cards' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredSessions.map((ses) => (
             <div
               key={ses.id}
-              className="bg-[#08152b] rounded-2xl border border-[#173054] p-5 shadow-xl hover:border-sky-500/40 hover:shadow-[0_4px_20px_rgba(0,180,255,0.1)] transition-all flex flex-col justify-between"
+              className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-start justify-between">
-                  <div className="px-2.5 py-1 bg-sky-500/15 text-sky-300 rounded-lg text-xs font-bold border border-sky-400/20">
-                    {ses.day}
-                  </div>
-                  <div className="flex items-center gap-1 text-xs font-bold text-white bg-slate-800/80 px-2.5 py-1 rounded-lg">
-                    <Users className="w-3.5 h-3.5 text-sky-400" />
-                    <span>{ses.studentCount} طالب</span>
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-[#0066ff] border border-blue-200">
+                    {ses.course || 'مادة عامة'}
+                  </span>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 font-mono">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{ses.time}</span>
                   </div>
                 </div>
 
-                <h3 className="text-base font-bold text-white mt-3">
-                  {ses.groupName}
-                </h3>
+                <h3 className="text-base font-bold text-slate-800 mt-3">{ses.groupName}</h3>
 
-                <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
-                  <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                  <span>{ses.course}</span>
+                <div className="mt-4 space-y-2 text-xs text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-slate-400" />
+                    <span>الأيام: <strong className="text-slate-800">{ses.day}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-slate-400" />
+                    <span>عدد الطلاب: <strong className="text-slate-800 font-mono">{ses.studentCount || 0} طالب</strong></span>
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-[#142642] flex items-center justify-between text-xs text-slate-300">
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-sky-400" />
-                  <span>{ses.time}</span>
-                </div>
-                {ses.room && (
-                  <div className="flex items-center gap-1 text-slate-400">
-                    <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{ses.room}</span>
-                  </div>
-                )}
+              <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="text-emerald-600 font-bold">الحصة مستمرة أسبوعياً</span>
+                <span className="font-mono text-slate-400 text-[11px]">{ses.date}</span>
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="bg-[#08152b] rounded-2xl border border-[#173054] shadow-xl overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead className="bg-[#0a1832] text-slate-400 border-b border-[#142642] font-semibold whitespace-nowrap">
+            <table className="w-full text-right text-xs sm:text-sm">
+              <thead className="bg-slate-50 text-slate-600 border-b border-slate-100 font-bold">
                 <tr>
-                  <th className="px-4 py-3">اليوم</th>
-                  <th className="px-4 py-3">الوقت</th>
-                  <th className="px-4 py-3">المجموعة</th>
-                  <th className="px-4 py-3">الكورس</th>
-                  <th className="px-4 py-3">القاعة</th>
-                  <th className="px-4 py-3 text-center">عدد الطلاب</th>
+                  <th className="px-4 py-3.5">#</th>
+                  <th className="px-4 py-3.5">المجموعة</th>
+                  <th className="px-4 py-3.5">المادة</th>
+                  <th className="px-4 py-3.5">أيام الحصة</th>
+                  <th className="px-4 py-3.5">التوقيت</th>
+                  <th className="px-4 py-3.5 text-center">الطلاب</th>
+                  <th className="px-4 py-3.5">التاريخ المجدول</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#102038] whitespace-nowrap">
-                {filteredSessions.map((ses) => (
-                  <tr key={ses.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3 font-bold text-sky-400">
-                      {ses.day}
+              <tbody className="divide-y divide-slate-100">
+                {filteredSessions.map((ses, idx) => (
+                  <tr key={ses.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3.5 font-mono text-slate-400 text-xs">{idx + 1}</td>
+                    <td className="px-4 py-3.5 font-bold text-slate-800">{ses.groupName}</td>
+                    <td className="px-4 py-3.5 text-slate-600 font-medium">{ses.course}</td>
+                    <td className="px-4 py-3.5 text-slate-600 font-medium">{ses.day}</td>
+                    <td className="px-4 py-3.5 text-slate-700 font-bold font-mono">{ses.time}</td>
+                    <td className="px-4 py-3.5 text-center font-bold text-[#0066ff] font-mono">
+                      {ses.studentCount || 0}
                     </td>
-                    <td className="px-4 py-3 text-slate-200">
-                      {ses.time}
-                    </td>
-                    <td className="px-4 py-3 font-bold text-white">
-                      {ses.groupName}
-                    </td>
-                    <td className="px-4 py-3 text-slate-300 font-medium">
-                      {ses.course}
-                    </td>
-                    <td className="px-4 py-3 text-slate-400">
-                      {ses.room || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-500/20 text-sky-300 border border-sky-400/30">
-                        {ses.studentCount} طالب
-                      </span>
-                    </td>
+                    <td className="px-4 py-3.5 text-slate-500 font-mono text-xs">{ses.date}</td>
                   </tr>
                 ))}
               </tbody>

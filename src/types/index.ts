@@ -71,10 +71,15 @@ export type PageId =
   | 'groups'
   | 'attendance'
   | 'payments'
-  | 'schedule'
+  | 'expenses'
   | 'reports'
+  | 'notifications'
+  | 'schedule'
+  | 'exams'
   | 'search'
   | 'settings'
+  | 'users'
+  | 'links'
   | 'ai-assistant';
 
 export interface CenterSettings {

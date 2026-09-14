@@ -7,6 +7,7 @@ import {
   Edit2,
   Trash2,
   Phone,
+  Filter,
 } from 'lucide-react';
 import { Group, Student } from '../types';
 
@@ -49,23 +50,25 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
   });
 
   return (
-    <div className="space-y-5 select-none" dir="rtl">
+    <div className="space-y-6 select-none" dir="rtl">
       {/* Header section with Add button */}
-      <div className="bg-[#08152b] rounded-2xl border border-[#173054] p-5 shadow-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2.5">
-            <Users className="w-5 h-5 text-sky-400" />
-            <span>إدارة الطلاب</span>
+          <h2 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#0066ff] flex items-center justify-center border border-blue-100">
+              <Users className="w-5 h-5" />
+            </div>
+            <span>سجل وإدارة الطلاب</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            عرض وتعديل ومتابعة بيانات الطلاب المسجلين والاشتراكات المالية
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            عرض وتعديل ومتابعة بيانات الطلاب المسجلين والاشتراكات المالية والحضور
           </p>
         </div>
 
         <button
           id="btn-add-student"
           onClick={onOpenAddModal}
-          className="px-4 py-2.5 bg-gradient-to-r from-[#0066ff] to-[#0052cc] hover:from-[#0077ff] hover:to-[#0066ff] text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-[0_2px_14px_rgba(0,102,255,0.35)] cursor-pointer"
+          className="px-5 py-2.5 bg-[#0066ff] hover:bg-[#0055ee] text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
         >
           <UserPlus className="w-4 h-4" />
           <span>إضافة طالب جديد</span>
@@ -73,10 +76,10 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
       </div>
 
       {/* Search and Filters bar */}
-      <div className="bg-[#08152b] rounded-2xl border border-[#173054] p-4 shadow-xl grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-3.5">
         {/* Search by Name or Phone */}
         <div className="md:col-span-2 relative">
-          <label className="block text-xs font-semibold text-slate-300 mb-1">
+          <label className="block text-xs font-bold text-slate-600 mb-1.5">
             البحث بالاسم أو رقم الهاتف
           </label>
           <div className="relative">
@@ -85,27 +88,27 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="اكتب اسم الطالب أو رقم الهاتف..."
-              className="w-full pr-9 pl-3.5 py-2 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40"
+              placeholder="اكتب اسم الطالب أو رقم الهاتف للبحث الفوري..."
+              className="w-full pr-10 pl-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white transition-all"
             />
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+            <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
           </div>
         </div>
 
         {/* Filter by Group */}
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1">
-            تصفية بالمجموعة
+          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+            المجموعة الدراسية
           </label>
           <select
             id="students-filter-group"
             value={selectedGroupFilter}
             onChange={(e) => setSelectedGroupFilter(e.target.value)}
-            className="w-full px-3 py-2 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+            className="w-full px-3 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
           >
             <option value="">جميع المجموعات</option>
             {groups.map((grp) => (
-              <option key={grp.id} value={grp.id} className="bg-[#09152b] text-white">
+              <option key={grp.id} value={grp.id}>
                 {grp.name}
               </option>
             ))}
@@ -114,109 +117,110 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
 
         {/* Filter by Status */}
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1">
-            الحالة
+          <label className="block text-xs font-bold text-slate-600 mb-1.5">
+            حالة الطالب
           </label>
           <select
             id="students-filter-status"
             value={selectedStatusFilter}
             onChange={(e) => setSelectedStatusFilter(e.target.value)}
-            className="w-full px-3 py-2 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+            className="w-full px-3 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
           >
             <option value="">جميع الحالات</option>
-            <option value="نشط" className="bg-[#09152b] text-white">نشط</option>
-            <option value="متوقف" className="bg-[#09152b] text-white">متوقف</option>
-            <option value="مؤجل" className="bg-[#09152b] text-white">مؤجل</option>
+            <option value="نشط">نشط</option>
+            <option value="متوقف">متوقف</option>
+            <option value="مؤجل">مؤجل</option>
           </select>
         </div>
       </div>
 
       {/* Students Table */}
-      <div className="bg-[#08152b] rounded-2xl border border-[#173054] shadow-xl overflow-hidden">
-        <div className="p-4 border-b border-[#142642] flex items-center justify-between">
-          <div className="text-xs font-semibold text-slate-400">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+          <div className="text-xs sm:text-sm font-bold text-slate-600">
             تم العثور على{' '}
-            <span className="text-white font-bold">{filteredStudents.length}</span>{' '}
+            <span className="text-[#0066ff] font-black">{filteredStudents.length}</span>{' '}
             طالب
           </div>
         </div>
 
         {filteredStudents.length === 0 ? (
-          <div className="p-10 text-center text-slate-400">
-            <Users className="w-10 h-10 mx-auto text-slate-600 mb-2" />
-            <p className="text-sm font-semibold">لا يوجد طلاب مطابقين للبحث</p>
+          <div className="p-12 text-center text-slate-400">
+            <Users className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+            <p className="text-sm font-bold text-slate-600">لا يوجد طلاب مطابقين للبحث</p>
+            <p className="text-xs text-slate-400 mt-1">تأكد من كتابة الاسم أو رقم الهاتف بشكل صحيح أو أضف طالباً جديداً.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead className="bg-[#0a1832] text-slate-400 border-b border-[#142642] font-semibold">
+            <table className="w-full text-right text-xs sm:text-sm">
+              <thead className="bg-slate-50 text-slate-600 border-b border-slate-100 font-bold">
                 <tr>
-                  <th className="px-4 py-3">كود الطالب</th>
-                  <th className="px-4 py-3">اسم الطالب</th>
-                  <th className="px-4 py-3">المجموعة</th>
-                  <th className="px-4 py-3">رقم الهاتف</th>
-                  <th className="px-4 py-3">المدفوع</th>
-                  <th className="px-4 py-3">المتبقي</th>
-                  <th className="px-4 py-3">الحالة</th>
-                  <th className="px-4 py-3 text-center">الإجراءات</th>
+                  <th className="px-4 py-3.5">كود الطالب</th>
+                  <th className="px-4 py-3.5">اسم الطالب</th>
+                  <th className="px-4 py-3.5">المجموعة</th>
+                  <th className="px-4 py-3.5">رقم الهاتف</th>
+                  <th className="px-4 py-3.5">المدفوع</th>
+                  <th className="px-4 py-3.5">المتبقي</th>
+                  <th className="px-4 py-3.5">الحالة</th>
+                  <th className="px-4 py-3.5 text-center">الإجراءات</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#102038]">
+              <tbody className="divide-y divide-slate-100">
                 {filteredStudents.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-sky-400">
+                  <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3.5 font-mono font-bold text-[#0066ff]">
                       {s.code}
                     </td>
-                    <td className="px-4 py-3 font-bold text-white">
+                    <td className="px-4 py-3.5 font-bold text-slate-800">
                       {s.name}
                     </td>
-                    <td className="px-4 py-3 text-slate-300">
+                    <td className="px-4 py-3.5 text-slate-600 font-medium">
                       {s.groupName}
                     </td>
-                    <td className="px-4 py-3 text-slate-300 dir-ltr text-right">
-                      <span className="inline-flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-slate-500" />
+                    <td className="px-4 py-3.5 text-slate-600 dir-ltr text-right font-mono text-xs">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" />
                         <span>{s.phone}</span>
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-bold text-emerald-400">
+                    <td className="px-4 py-3.5 font-bold text-emerald-600 font-mono">
                       {s.paidAmount} ج.م
                     </td>
-                    <td className="px-4 py-3 font-bold text-rose-400">
+                    <td className="px-4 py-3.5 font-bold text-rose-600 font-mono">
                       {s.remainingAmount} ج.م
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                        className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold ${
                           s.status === 'نشط'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : s.status === 'متوقف'
-                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}
                       >
                         {s.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           onClick={() => onOpenViewModal(s)}
-                          className="p-1.5 rounded-lg text-sky-400 hover:bg-sky-500/10 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-[#0066ff] hover:bg-blue-50 transition-colors"
                           title="عرض التفاصيل"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => onOpenEditModal(s)}
-                          className="p-1.5 rounded-lg text-amber-400 hover:bg-amber-500/10 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                           title="تعديل"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => onRequestDelete(s)}
-                          className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                           title="حذف"
                         >
                           <Trash2 className="w-4 h-4" />

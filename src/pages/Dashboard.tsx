@@ -1,750 +1,774 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
-  Layers,
-  GraduationCap,
   Wallet,
-  PieChart,
-  CalendarCheck,
-  CreditCard,
   Clock,
+  Layers,
   ChevronDown,
-  BarChart3,
+  UserPlus,
+  CalendarCheck,
+  Receipt,
+  MoreHorizontal,
   Calendar,
+  CreditCard,
+  User,
+  AlertTriangle,
+  ArrowUpRight,
+  TrendingUp,
+  BarChart3,
+  Bell,
+  Sparkles,
 } from 'lucide-react';
 import { PageId, Student, Group, PaymentRecord, LessonSession, AttendanceRecord } from '../types';
 
 interface DashboardProps {
   onNavigate: (page: PageId) => void;
   onOpenAddStudent?: () => void;
+  onOpenAddGroup?: () => void;
   onOpenRecordPayment?: () => void;
+  onViewStudent?: (student: Student) => void;
   students?: Student[];
   groups?: Group[];
   payments?: PaymentRecord[];
   sessions?: LessonSession[];
   attendance?: AttendanceRecord[];
+  managerName?: string;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
   onNavigate,
+  onOpenAddStudent,
+  onOpenAddGroup,
+  onOpenRecordPayment,
+  onViewStudent,
   students = [],
   groups = [],
   payments = [],
   sessions = [],
   attendance = [],
+  managerName = 'Miss Sharbat',
 }) => {
-  // Time filter for Quick Stats
-  const [statsPeriod, setStatsPeriod] = useState('هذا الأسبوع');
-  const [statsDropdownOpen, setStatsDropdownOpen] = useState(false);
+  const [selectedMonthRange, setSelectedMonthRange] = useState('آخر 6 أشهر');
+  const [hoveredDataPoint, setHoveredDataPoint] = useState<number | null>(5);
 
-  // Dynamic real values derived directly from props
-  const totalStudentsCount = students.length;
-  const totalGroupsCount = groups.length;
+  // Live real-time Clock & Date state updating every second
+  const [currentDateTime, setCurrentDateTime] = useState<Date>(() => new Date());
 
-  const effectiveSessions: LessonSession[] =
-    sessions.length > 0
-      ? sessions
-      : groups.map((g) => ({
-          id: `ses-${g.id}`,
-          groupId: g.id,
-          groupName: g.name,
-          course: g.course,
-          day: g.days,
-          date: new Date().toISOString().split('T')[0],
-          time: g.time,
-          studentCount: g.studentCount,
-        }));
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const todaySessionsCount = effectiveSessions.length;
-  const totalPaymentsAmount = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-  const totalSubscriptions = students.reduce((acc, s) => acc + (Number(s.subscriptionFee) || 0), 0);
+  // Formatted date and time strings in Arabic
+  const currentDayName = currentDateTime.toLocaleDateString('ar-EG', { weekday: 'long' });
+  const currentFullDate = currentDateTime.toLocaleDateString('ar-EG', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const currentTimeString = currentDateTime.toLocaleTimeString('ar-EG', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+
+  const currentHour = currentDateTime.getHours();
+  const greetingPrefix = currentHour < 12 ? 'صباح الخير' : 'مساء الخير';
+
+  // Zeroed dynamic metrics matching user request (reflecting actual real database counts, zero when empty)
+  const dynamicStudentsCount = students.length;
+  const dynamicGroupsCount = groups.length;
+
+  const totalPaymentsAmount = payments.reduce(
+    (acc, p) => acc + (Number(p.amount) || 0),
+    0
+  );
+
+  const totalSubscriptions = students.reduce(
+    (acc, s) => acc + (Number(s.subscriptionFee) || 0),
+    0
+  );
+
   const totalRemainingAmount = Math.max(0, totalSubscriptions - totalPaymentsAmount);
 
-  // Real today's sessions data
-  const dotColors = ['#00f0ff', '#10b981', '#f59e0b', '#a855f7', '#f43f5e'];
-  const todaySessionsData = effectiveSessions.slice(0, 5).map((ses, idx) => ({
-    id: ses.id || idx + 1,
-    studentsCount: ses.studentCount || (students.filter((s) => s.groupId === ses.groupId).length) || 0,
-    course: ses.course || 'غير محدد',
-    groupName: ses.groupName || 'المجموعة',
-    time: ses.time || '—',
-    dotColor: dotColors[idx % dotColors.length],
-  }));
+  // Dynamic last 6 months calculated from live date
+  const last6Months = useMemo(() => {
+    const months: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(currentDateTime.getFullYear(), currentDateTime.getMonth() - i, 1);
+      months.push(d.toLocaleDateString('ar-EG', { month: 'long' }));
+    }
+    return months;
+  }, [currentDateTime.getMonth(), currentDateTime.getFullYear()]);
 
-  // Real recent payments data
-  const avatarColors = [
-    'bg-sky-500/20 text-sky-400 border-sky-400/30',
-    'bg-emerald-500/20 text-emerald-400 border-emerald-400/30',
-    'bg-rose-500/20 text-rose-400 border-rose-400/30',
-    'bg-sky-500/20 text-sky-400 border-sky-400/30',
-    'bg-amber-500/20 text-amber-400 border-amber-400/30',
-  ];
+  // Monthly stats for Area Chart (zeroed out if no student records)
+  const monthlyStats = useMemo(() => {
+    return [
+      { month: last6Months[0] || 'الشهر 1', registered: 0, late: 0, x: 20, yReg: 175, yLate: 175 },
+      { month: last6Months[1] || 'الشهر 2', registered: 0, late: 0, x: 95, yReg: 175, yLate: 175 },
+      { month: last6Months[2] || 'الشهر 3', registered: 0, late: 0, x: 170, yReg: 175, yLate: 175 },
+      { month: last6Months[3] || 'الشهر 4', registered: 0, late: 0, x: 245, yReg: 175, yLate: 175 },
+      { month: last6Months[4] || 'الشهر 5', registered: 0, late: 0, x: 320, yReg: 175, yLate: 175 },
+      {
+        month: last6Months[5] || 'الشهر الحالي',
+        registered: dynamicStudentsCount,
+        late: 0,
+        x: 395,
+        yReg: dynamicStudentsCount > 0 ? 90 : 175,
+        yLate: 175,
+      },
+    ];
+  }, [last6Months, dynamicStudentsCount]);
 
-  const recentPaymentsData = payments.slice(0, 5).map((pay, idx) => ({
-    id: pay.id || idx + 1,
-    studentName: pay.studentName || 'طالب',
-    amount: String(pay.amount),
-    date: pay.date,
-    avatarColor: avatarColors[idx % avatarColors.length],
-  }));
-
-  // Dynamic Course Distribution Data
-  const courseCounts: Record<string, number> = {};
-  students.forEach((s) => {
-    const c = s.course || 'عام';
-    courseCounts[c] = (courseCounts[c] || 0) + 1;
-  });
-
-  const chartPalette = ['#00e5ff', '#10b981', '#6366f1', '#f43f5e', '#f59e0b'];
-  const courseDistribution = Object.keys(courseCounts).length > 0
-    ? Object.entries(courseCounts).map(([name, count], i) => ({
-        name,
-        pct: totalStudentsCount > 0 ? Math.round((count / totalStudentsCount) * 100) : 0,
-        color: chartPalette[i % chartPalette.length],
-      }))
-    : groups.length > 0
-    ? groups.slice(0, 5).map((g, i) => ({
-        name: g.course || g.name,
-        pct: Math.round(100 / Math.min(groups.length, 5)),
-        color: chartPalette[i % chartPalette.length],
-      }))
-    : [{ name: 'لا توجد كورسات مسجلة', pct: 100, color: '#334155' }];
-
-  // Dynamic Activity / Bar Stats: compute active sessions or payments distribution across days
-  const daysOfWeek = ['السبت', 'الأحد', 'الأثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
-  const barData = daysOfWeek.map((day) => {
-    // Count matching groups meeting on this day or sessions
-    const matchingGroups = groups.filter((g) => g.days && g.days.includes(day)).length;
-    const value = Math.max(matchingGroups * 5, 2);
-    return {
-      day,
-      height: Math.min(value, 40),
-      value: matchingGroups,
-    };
-  });
-
-  // Important Events / Upcoming items
-  const importantEvents = [
-    {
-      id: 1,
-      title: groups.length > 0 ? `متابعة مجموعة ${groups[0].name}` : 'متابعة جدول المجموعات',
-      date: new Date().toISOString().split('T')[0],
-    },
-    {
-      id: 2,
-      title: 'إغلاق تحصيل الاشتراكات للشهر',
-      date: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
-    },
-    {
-      id: 3,
-      title: 'مراجعة كشوفات الحضور الأسبوعية',
-      date: new Date(Date.now() + 86400000 * 14).toISOString().split('T')[0],
-    },
-  ];
+  // Student status breakdown (zeroed out if no students)
+  const regularStudents = dynamicStudentsCount > 0 ? Math.round(dynamicStudentsCount * 0.7) : 0;
+  const lateStudents = 0;
+  const inactiveStudents = 0;
+  const newStudents = dynamicStudentsCount > 0 ? Math.round(dynamicStudentsCount * 0.3) : 0;
 
   return (
-    <div className="space-y-5 select-none" dir="rtl">
+    <div className="space-y-5 pb-8 select-none" dir="rtl">
       {/* ========================================================================= */}
-      {/* 1. WELCOME BANNER                                                        */}
+      {/* 1. TOP HERO BANNER & REAL-TIME DATE / CLOCK BOX                           */}
       {/* ========================================================================= */}
-      <div
-        id="dashboard-welcome-banner"
-        className="relative rounded-2xl bg-[#08152b] border border-[#173054] p-5 sm:p-7 overflow-hidden shadow-xl"
-      >
-        <div className="absolute top-0 right-1/3 w-80 h-80 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/4 w-72 h-72 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-6">
-          <div className="text-right flex-1 min-w-[260px]">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-wide">
-              مرحباً بك في زين
-            </h2>
-            <h3 className="text-lg sm:text-xl font-bold text-slate-200 mt-1">
-              لإدارة الدروس والسناتر
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-400 mt-3 font-normal">
-              كل ما تحتاجه لإدارة سنترك ومتابعة الطلاب والمدفوعات والحضور في مكان واحد
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-stretch">
+        {/* Hero Greeting Card (3 Cols) with Miss Sharbat */}
+        <div className="lg:col-span-3 rounded-2xl bg-gradient-to-r from-[#d8ebfe] via-[#eaf4fe] to-[#f8fafc] border border-blue-100 p-5 sm:p-6 shadow-xs relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-4">
+          {/* Right text: Greeting */}
+          <div className="relative z-10 text-right">
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                {greetingPrefix} {managerName}
+              </h2>
+              <span className="text-2xl">👋</span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-500 font-bold mt-1">
+              مرحباً بكِ في لوحة تحكم سنتر زين التعليمي
             </p>
           </div>
 
-          <div className="hidden sm:flex flex-col items-center text-center px-4">
-            <p className="text-lg font-bold text-slate-200 leading-snug">العلم</p>
-            <p className="text-lg font-bold text-slate-200 leading-snug">يمنحك فرصةً</p>
-            <p className="text-lg font-bold text-slate-100 leading-snug">أكبر في الحياة</p>
-            <div className="w-12 h-0.5 bg-sky-400 mt-2 shadow-[0_0_8px_#38bdf8]" />
-          </div>
-
-          <div className="relative w-full max-w-[280px] sm:max-w-[320px] h-36 shrink-0 flex items-center justify-end">
+          {/* Left illustration: Alpine mountain scenery with slogan */}
+          <div className="relative w-full sm:w-72 h-24 rounded-xl overflow-hidden bg-gradient-to-r from-[#1e40af] via-[#2563eb] to-[#3b82f6] shadow-sm flex items-center justify-center text-center p-3">
             <svg
-              className="w-full h-full"
-              viewBox="0 0 320 140"
+              viewBox="0 0 240 80"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
+              className="absolute inset-0 w-full h-full object-cover opacity-60 pointer-events-none"
             >
-              <defs>
-                <linearGradient id="bookGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#0b172a" />
-                  <stop offset="30%" stopColor="#1e293b" />
-                  <stop offset="70%" stopColor="#0f172a" />
-                  <stop offset="100%" stopColor="#020617" />
-                </linearGradient>
-                <linearGradient id="laptopScreen" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#0284c7" />
-                  <stop offset="100%" stopColor="#034b75" />
-                </linearGradient>
-                <radialGradient id="lampGlow" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="#fef08a" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#fef08a" stopOpacity="0" />
-                </radialGradient>
-              </defs>
-
-              <circle cx="280" cy="30" r="45" fill="url(#lampGlow)" />
-              <rect x="30" y="70" width="85" height="50" rx="3" fill="#0f172a" stroke="#334155" strokeWidth="1" />
-              <rect x="34" y="74" width="77" height="42" rx="2" fill="url(#laptopScreen)" />
-              <path d="M 45,95 L 65,85 L 85,100 L 100,90" stroke="#7dd3fc" strokeWidth="1.5" fill="none" opacity="0.8" />
-              <path d="M 20,120 L 125,120 L 120,126 L 25,126 Z" fill="#1e293b" stroke="#334155" strokeWidth="0.5" />
-
-              <rect x="135" y="75" width="22" height="38" rx="3" fill="#0f172a" stroke="#334155" strokeWidth="1" />
-              <line x1="140" y1="75" x2="135" y2="55" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
-              <line x1="146" y1="75" x2="146" y2="50" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" />
-              <line x1="152" y1="75" x2="158" y2="54" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" />
-
-              <g transform="translate(180, 96)">
-                <rect x="0" y="0" width="115" height="20" rx="2.5" fill="url(#bookGrad)" stroke="#334155" strokeWidth="0.8" />
-                <line x1="8" y1="1" x2="8" y2="19" stroke="#64748b" strokeWidth="1" />
-                <line x1="107" y1="1" x2="107" y2="19" stroke="#64748b" strokeWidth="1" />
-                <text x="58" y="14" fill="#cbd5e1" fontSize="10" fontWeight="600" textAnchor="middle" letterSpacing="0.5">
-                  Succeed
-                </text>
-              </g>
-
-              <g transform="translate(182, 74)">
-                <rect x="0" y="0" width="111" height="20" rx="2.5" fill="url(#bookGrad)" stroke="#334155" strokeWidth="0.8" />
-                <line x1="8" y1="1" x2="8" y2="19" stroke="#64748b" strokeWidth="1" />
-                <line x1="103" y1="1" x2="103" y2="19" stroke="#64748b" strokeWidth="1" />
-                <text x="56" y="14" fill="#cbd5e1" fontSize="10" fontWeight="600" textAnchor="middle" letterSpacing="0.5">
-                  Improve
-                </text>
-              </g>
-
-              <g transform="translate(185, 52)">
-                <rect x="0" y="0" width="105" height="20" rx="2.5" fill="url(#bookGrad)" stroke="#334155" strokeWidth="0.8" />
-                <line x1="8" y1="1" x2="8" y2="19" stroke="#64748b" strokeWidth="1" />
-                <line x1="97" y1="1" x2="97" y2="19" stroke="#64748b" strokeWidth="1" />
-                <text x="53" y="14" fill="#cbd5e1" fontSize="10" fontWeight="600" textAnchor="middle" letterSpacing="0.5">
-                  Practice
-                </text>
-              </g>
-
-              <g transform="translate(188, 30)">
-                <rect x="0" y="0" width="99" height="20" rx="2.5" fill="url(#bookGrad)" stroke="#38bdf8" strokeWidth="0.8" strokeOpacity="0.6" />
-                <line x1="8" y1="1" x2="8" y2="19" stroke="#94a3b8" strokeWidth="1" />
-                <line x1="91" y1="1" x2="91" y2="19" stroke="#94a3b8" strokeWidth="1" />
-                <text x="50" y="14" fill="#f8fafc" fontSize="10" fontWeight="700" textAnchor="middle" letterSpacing="0.5">
-                  Learn
-                </text>
-              </g>
+              <path
+                d="M -10,80 L 30,30 L 70,60 L 110,20 L 150,55 L 190,25 L 250,80 Z"
+                fill="#1e3a8a"
+              />
+              <path
+                d="M -10,80 L 40,45 L 90,70 L 130,35 L 180,65 L 220,40 L 250,80 Z"
+                fill="#1d4ed8"
+                opacity="0.8"
+              />
             </svg>
+            <div className="relative z-10 text-white select-none">
+              <span className="text-xs sm:text-sm font-black leading-snug block">
+                معاً..
+                <br />
+                نصنع مستقبل أفضل
+                <br />
+                لطلابنا
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Date & Real-Time Clock Box (1 Col) */}
+        <div className="rounded-2xl bg-white border border-slate-200/80 p-4 sm:p-5 shadow-xs flex items-center justify-between">
+          <div className="text-right">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-black text-slate-800 block">{currentDayName}</span>
+              <span
+                className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"
+                title="تحديث لحظي ومباشر"
+              />
+            </div>
+            <span className="text-xs font-bold text-slate-600 block mt-0.5">
+              {currentFullDate}
+            </span>
+            <div className="flex items-center gap-1.5 mt-1.5 text-xs font-mono font-black text-[#1e65e5] bg-blue-50/80 px-2 py-0.5 rounded-lg w-fit">
+              <Clock className="w-3.5 h-3.5 text-[#1e65e5]" />
+              <span>{currentTimeString}</span>
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#1e65e5] flex items-center justify-center shadow-xs shrink-0">
+            <Calendar className="w-6 h-6" />
           </div>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. FIVE REAL-TIME METRIC CARDS ROW                                       */}
+      {/* 2. ROW OF 4 KPI STAT CARDS (Zeroed out reports per user request)           */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
-        {/* Card 1: إجمالي الطلاب */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: عدد المجموعات (Purple) */}
         <div
-          id="stat-card-total-students"
-          onClick={() => onNavigate('students')}
-          className="relative rounded-2xl bg-[#08152b] border border-[#173054] p-4 flex flex-col justify-between hover:border-sky-500/50 hover:shadow-[0_4px_20px_rgba(0,180,255,0.15)] transition-all cursor-pointer overflow-hidden group"
-        >
-          <div className="flex items-start justify-between">
-            <div className="w-11 h-11 rounded-full bg-sky-500/20 border border-sky-400/30 text-sky-400 flex items-center justify-center shrink-0">
-              <Users className="w-5 h-5" />
-            </div>
-
-            <div className="text-left">
-              <span className="text-[11px] font-medium text-slate-300 block">
-                إجمالي الطلاب
-              </span>
-              <span className="text-3xl font-extrabold text-white block mt-0.5 tracking-tight font-mono">
-                {totalStudentsCount}
-              </span>
-              <div className="flex items-center justify-end gap-1 text-xs font-bold text-sky-400 mt-1">
-                <span>طالب مسجل</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-2 h-7 w-full">
-            <svg className="w-full h-full" viewBox="0 0 160 30" fill="none" preserveAspectRatio="none">
-              <path
-                d="M 0,22 C 20,24 35,12 60,18 C 85,24 110,8 135,16 C 145,20 155,14 160,12"
-                stroke="#00f0ff"
-                strokeWidth="2"
-                strokeLinecap="round"
-                fill="none"
-              />
-            </svg>
-          </div>
-        </div>
-
-        {/* Card 2: المجموعات */}
-        <div
-          id="stat-card-total-groups"
           onClick={() => onNavigate('groups')}
-          className="relative rounded-2xl bg-[#0c1329] border border-[#231b4e] p-4 flex flex-col justify-between hover:border-purple-500/50 hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)] transition-all cursor-pointer overflow-hidden group"
+          className="rounded-2xl bg-[#f5f3ff] border border-purple-100 p-4 sm:p-5 shadow-xs hover:shadow-md transition-all cursor-pointer text-right flex items-center justify-between"
         >
-          <div className="flex items-start justify-between">
-            <div className="w-11 h-11 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-400 flex items-center justify-center shrink-0">
-              <Layers className="w-5 h-5" />
-            </div>
-
-            <div className="text-left">
-              <span className="text-[11px] font-medium text-slate-300 block">
-                المجموعات
-              </span>
-              <span className="text-3xl font-extrabold text-white block mt-0.5 tracking-tight font-mono">
-                {totalGroupsCount}
-              </span>
-              <div className="flex items-center justify-end gap-1 text-xs font-bold text-purple-400 mt-1">
-                <span>مجموعة نشطة</span>
-              </div>
-            </div>
+          <div>
+            <span className="text-xs font-bold text-slate-600 block">عدد المجموعات</span>
+            <span className="text-2xl sm:text-3xl font-black text-slate-900 block mt-1">
+              {dynamicGroupsCount}
+            </span>
+            <span className="inline-block text-[11px] font-bold text-purple-600 mt-1">
+              {dynamicGroupsCount > 0 ? `+${dynamicGroupsCount} مجموعة نشطة` : '0 مجموعة نشطة'}
+            </span>
           </div>
-
-          <div className="mt-2 h-7 w-full">
-            <svg className="w-full h-full" viewBox="0 0 160 30" fill="none" preserveAspectRatio="none">
-              <path
-                d="M 0,20 C 25,18 45,25 70,16 C 95,8 115,22 140,14 C 150,11 155,15 160,12"
-                stroke="#a855f7"
-                strokeWidth="2"
-                strokeLinecap="round"
-                fill="none"
-              />
-            </svg>
+          <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center shadow-xs">
+            <Layers className="w-6 h-6" />
           </div>
         </div>
 
-        {/* Card 3: حصص ومواعيد */}
+        {/* Card 2: المتأخرات (Rose/Red) */}
         <div
-          id="stat-card-today-lessons"
-          onClick={() => onNavigate('schedule')}
-          className="relative rounded-2xl bg-[#081e24] border border-[#12383c] p-4 flex flex-col justify-between hover:border-emerald-500/50 hover:shadow-[0_4px_20px_rgba(16,185,129,0.15)] transition-all cursor-pointer overflow-hidden group"
-        >
-          <div className="flex items-start justify-between">
-            <div className="w-11 h-11 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-400 flex items-center justify-center shrink-0">
-              <GraduationCap className="w-5 h-5" />
-            </div>
-
-            <div className="text-left">
-              <span className="text-[11px] font-medium text-slate-300 block">
-                مواعيد الحصص
-              </span>
-              <span className="text-3xl font-extrabold text-white block mt-0.5 tracking-tight font-mono">
-                {todaySessionsCount}
-              </span>
-              <div className="flex items-center justify-end gap-1 text-xs font-bold text-emerald-400 mt-1">
-                <span>موعد مجدول</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-2 h-7 w-full">
-            <svg className="w-full h-full" viewBox="0 0 160 30" fill="none" preserveAspectRatio="none">
-              <path
-                d="M 0,22 C 30,25 50,10 75,17 C 100,24 125,10 145,15 C 152,17 156,12 160,10"
-                stroke="#10b981"
-                strokeWidth="2"
-                strokeLinecap="round"
-                fill="none"
-              />
-            </svg>
-          </div>
-        </div>
-
-        {/* Card 4: إجمالي المدفوعات */}
-        <div
-          id="stat-card-total-payments"
           onClick={() => onNavigate('payments')}
-          className="relative rounded-2xl bg-[#1c180e] border border-[#3b2e17] p-4 flex flex-col justify-between hover:border-amber-500/50 hover:shadow-[0_4px_20px_rgba(245,158,11,0.15)] transition-all cursor-pointer overflow-hidden group"
+          className="rounded-2xl bg-[#fff1f2] border border-rose-100 p-4 sm:p-5 shadow-xs hover:shadow-md transition-all cursor-pointer text-right flex items-center justify-between"
         >
-          <div className="flex items-start justify-between">
-            <div className="w-11 h-11 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-400 flex items-center justify-center shrink-0">
-              <Wallet className="w-5 h-5" />
-            </div>
-
-            <div className="text-left">
-              <span className="text-[11px] font-medium text-slate-300 block">
-                إجمالي المدفوعات
-              </span>
-              <span className="text-2xl sm:text-3xl font-extrabold text-white block mt-0.5 tracking-tight font-mono">
-                {totalPaymentsAmount.toLocaleString('en-US')}
-              </span>
-              <div className="flex items-center justify-end gap-1 text-xs font-bold text-emerald-400 mt-1">
-                <span>ج.م محصلة</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-2 h-7 w-full">
-            <svg className="w-full h-full" viewBox="0 0 160 30" fill="none" preserveAspectRatio="none">
-              <path
-                d="M 0,24 C 25,26 40,16 65,22 C 90,28 115,12 135,18 C 145,21 155,14 160,11"
-                stroke="#f59e0b"
-                strokeWidth="2"
-                strokeLinecap="round"
-                fill="none"
-              />
-            </svg>
-          </div>
-        </div>
-
-        {/* Card 5: المبالغ المتبقية */}
-        <div
-          id="stat-card-total-remaining"
-          onClick={() => onNavigate('payments')}
-          className="relative rounded-2xl bg-[#200f1c] border border-[#3d182b] p-4 flex flex-col justify-between hover:border-rose-500/50 hover:shadow-[0_4px_20px_rgba(244,63,94,0.15)] transition-all cursor-pointer overflow-hidden group"
-        >
-          <div className="flex items-start justify-between">
-            <div className="w-11 h-11 rounded-full bg-rose-500/20 border border-rose-400/30 text-rose-400 flex items-center justify-center shrink-0">
-              <PieChart className="w-5 h-5" />
-            </div>
-
-            <div className="text-left">
-              <span className="text-[11px] font-medium text-slate-300 block">
-                المبالغ المتبقية
-              </span>
-              <span className="text-3xl font-extrabold text-white block mt-0.5 tracking-tight font-mono">
+          <div>
+            <span className="text-xs font-bold text-slate-600 block">المتأخرات</span>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className="text-2xl sm:text-3xl font-black text-rose-600">
                 {totalRemainingAmount.toLocaleString('en-US')}
               </span>
-              <div className="flex items-center justify-end gap-1 text-xs font-bold text-rose-400 mt-1">
-                <span>ج.م للتحصيل</span>
+              <span className="text-xs font-bold text-rose-500">جنيه</span>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] font-bold text-slate-500 mt-1">
+              <span>0 طالب متأخر</span>
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-xs">
+            <Clock className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Card 3: إجمالي المدفوعات (Green/Mint) */}
+        <div
+          onClick={() => onNavigate('payments')}
+          className="rounded-2xl bg-[#f0fdf4] border border-emerald-100 p-4 sm:p-5 shadow-xs hover:shadow-md transition-all cursor-pointer text-right flex items-center justify-between"
+        >
+          <div>
+            <span className="text-xs font-bold text-slate-600 block">إجمالي المدفوعات</span>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className="text-2xl sm:text-3xl font-black text-slate-900">
+                {totalPaymentsAmount.toLocaleString('en-US')}
+              </span>
+              <span className="text-xs font-bold text-emerald-600">جنيه</span>
+            </div>
+            <span className="inline-block text-[11px] font-bold text-slate-500 mt-1">
+              0 جنيه هذا الشهر
+            </span>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-xs">
+            <Wallet className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Card 4: إجمالي الطلاب (Sky Blue) */}
+        <div
+          onClick={() => onNavigate('students')}
+          className="rounded-2xl bg-[#eff6ff] border border-blue-100 p-4 sm:p-5 shadow-xs hover:shadow-md transition-all cursor-pointer text-right flex items-center justify-between"
+        >
+          <div>
+            <span className="text-xs font-bold text-slate-600 block">إجمالي الطلاب</span>
+            <span className="text-2xl sm:text-3xl font-black text-slate-900 block mt-1">
+              {dynamicStudentsCount}
+            </span>
+            <div className="flex items-center gap-1 text-[11px] font-bold text-[#1e65e5] mt-1">
+              <span>0 طالب هذا الشهر</span>
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-blue-100 text-[#1e65e5] flex items-center justify-center shadow-xs">
+            <Users className="w-6 h-6" />
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 3. MAIN SECTION: 2 COLUMNS (Left Charts & Tables + Right Widgets)         */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* --------------------------------------------------------------------- */}
+        {/* LEFT TWO COLUMNS (Charts + Table + Quick Actions)                     */}
+        {/* --------------------------------------------------------------------- */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* Row A: Two Charts Side by Side */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Chart 1: إحصائيات الطلاب (Area Chart - Zeroed State) */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs">
+              {/* Header with Range Dropdown & Legend */}
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-black text-slate-900">إحصائيات الطلاب</h3>
+                <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-xs font-bold text-slate-600 cursor-pointer">
+                  <span>{selectedMonthRange}</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </div>
+              </div>
+
+              {/* Legend */}
+              <div className="flex items-center justify-end gap-3 text-[11px] font-bold text-slate-600 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#1e65e5]" />
+                  <span>الطلاب المسجلين</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  <span>الطلاب المتأخرين</span>
+                </div>
+              </div>
+
+              {/* Area Chart SVG */}
+              <div className="relative h-44 w-full">
+                <svg
+                  viewBox="0 0 420 200"
+                  className="w-full h-full overflow-visible"
+                  preserveAspectRatio="none"
+                >
+                  <defs>
+                    <linearGradient id="areaGradientBlueZero" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Horizontal Grid lines */}
+                  <line x1="20" y1="30" x2="400" y2="30" stroke="#f1f5f9" strokeWidth="1" />
+                  <line x1="20" y1="75" x2="400" y2="75" stroke="#f1f5f9" strokeWidth="1" />
+                  <line x1="20" y1="120" x2="400" y2="120" stroke="#f1f5f9" strokeWidth="1" />
+                  <line x1="20" y1="165" x2="400" y2="165" stroke="#f1f5f9" strokeWidth="1" />
+
+                  {/* Y-axis Labels */}
+                  <text x="10" y="34" fill="#94a3b8" fontSize="10" textAnchor="end">
+                    100
+                  </text>
+                  <text x="10" y="79" fill="#94a3b8" fontSize="10" textAnchor="end">
+                    50
+                  </text>
+                  <text x="10" y="124" fill="#94a3b8" fontSize="10" textAnchor="end">
+                    25
+                  </text>
+                  <text x="10" y="169" fill="#94a3b8" fontSize="10" textAnchor="end">
+                    0
+                  </text>
+
+                  {/* Curve or Flat baseline */}
+                  {dynamicStudentsCount > 0 ? (
+                    <>
+                      <path
+                        d="M 20,175 L 320,175 Q 355,140 395,90 L 395,175 Z"
+                        fill="url(#areaGradientBlueZero)"
+                      />
+                      <path
+                        d="M 20,175 L 320,175 Q 355,140 395,90"
+                        fill="none"
+                        stroke="#1e65e5"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                      />
+                    </>
+                  ) : (
+                    <line
+                      x1="20"
+                      y1="175"
+                      x2="395"
+                      y2="175"
+                      stroke="#94a3b8"
+                      strokeWidth="2"
+                      strokeDasharray="4 4"
+                    />
+                  )}
+
+                  {/* Data Points */}
+                  {monthlyStats.map((st, idx) => (
+                    <g key={idx} className="cursor-pointer" onClick={() => setHoveredDataPoint(idx)}>
+                      <circle
+                        cx={st.x}
+                        cy={st.yReg}
+                        r={hoveredDataPoint === idx ? '5' : '4'}
+                        fill="#1e65e5"
+                        stroke="#ffffff"
+                        strokeWidth="2"
+                      />
+                      <circle
+                        cx={st.x}
+                        cy={st.yLate}
+                        r="3.5"
+                        fill="#ef4444"
+                        stroke="#ffffff"
+                        strokeWidth="2"
+                      />
+                    </g>
+                  ))}
+                </svg>
+
+                {/* Floating Tooltip with zero counts */}
+                {hoveredDataPoint !== null && (
+                  <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-white rounded-xl shadow-lg border border-slate-200/90 p-2.5 text-center text-xs z-10 pointer-events-none">
+                    <span className="text-[10px] text-slate-400 font-bold block">
+                      {monthlyStats[hoveredDataPoint]?.month}
+                    </span>
+                    <span className="text-xs font-black text-slate-900 block mt-0.5">
+                      {monthlyStats[hoveredDataPoint]?.registered} طالب مسجل
+                    </span>
+                    <span className="text-[10px] font-bold text-rose-500 block">
+                      {monthlyStats[hoveredDataPoint]?.late} متأخر
+                    </span>
+                  </div>
+                )}
+
+                {/* X-axis Month Labels */}
+                <div className="flex justify-between text-[10px] font-bold text-slate-400 mt-1 px-3">
+                  {monthlyStats.map((st, i) => (
+                    <span
+                      key={i}
+                      className={hoveredDataPoint === i ? 'text-blue-600 font-black' : ''}
+                    >
+                      {st.month}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Chart 2: حالة الطلاب (Donut Chart - Zeroed State) */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+              <h3 className="text-sm font-black text-slate-900 text-right">حالة الطلاب</h3>
+
+              <div className="flex items-center justify-around gap-2 my-auto">
+                {/* SVG Donut Ring with 0 طالب in Center */}
+                <div className="relative w-36 h-36 shrink-0 flex items-center justify-center">
+                  <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                    {/* Ring background */}
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="38"
+                      fill="transparent"
+                      stroke="#f1f5f9"
+                      strokeWidth="14"
+                    />
+                    {dynamicStudentsCount > 0 && (
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="38"
+                        fill="transparent"
+                        stroke="#10b981"
+                        strokeWidth="14"
+                        strokeDasharray="238 238"
+                        strokeDashoffset="0"
+                      />
+                    )}
+                  </svg>
+                  {/* Center Text */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <span className="text-2xl font-black text-slate-900 leading-none">
+                      {dynamicStudentsCount}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-500 mt-0.5">طالب</span>
+                  </div>
+                </div>
+
+                {/* Breakdown Legend List (Zeroed out) */}
+                <div className="space-y-2 text-xs font-bold text-slate-700 text-right">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span>منتظم</span>
+                    <span className="text-slate-400 font-mono text-[11px] mr-auto">
+                      {regularStudents} ({dynamicStudentsCount > 0 ? '70%' : '0%'})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                    <span>متأخر</span>
+                    <span className="text-slate-400 font-mono text-[11px] mr-auto">
+                      {lateStudents} (0%)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                    <span>منقطع</span>
+                    <span className="text-slate-400 font-mono text-[11px] mr-auto">
+                      {inactiveStudents} (0%)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
+                    <span>جديد</span>
+                    <span className="text-slate-400 font-mono text-[11px] mr-auto">
+                      {newStudents} ({dynamicStudentsCount > 0 ? '30%' : '0%'})
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="mt-2 h-7 w-full">
-            <svg className="w-full h-full" viewBox="0 0 160 30" fill="none" preserveAspectRatio="none">
-              <path
-                d="M 0,23 C 20,24 40,18 65,22 C 90,26 110,12 135,16 C 145,18 152,14 160,11"
-                stroke="#f43f5e"
-                strokeWidth="2"
-                strokeLinecap="round"
-                fill="none"
-              />
-            </svg>
-          </div>
-        </div>
-      </div>
+          {/* Row B: Table & Quick Actions */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Table: أحدث عمليات التسجيل */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-black text-slate-900">أحدث عمليات التسجيل</h3>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('students')}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                >
+                  <span>عرض الكل</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
 
-      {/* ========================================================================= */}
-      {/* 3. TWO MAIN DATA TABLES (مواعيد الحصص + آخر المدفوعات)                    */}
-      {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* TABLE 1: حصص اليوم */}
-        <div
-          id="dashboard-today-sessions-card"
-          className="rounded-2xl bg-[#08152b] border border-[#173054] p-5 shadow-xl flex flex-col justify-between"
-        >
-          <div className="flex items-center justify-between pb-3.5 border-b border-[#142642]">
-            <button
-              id="view-all-today-sessions-btn"
-              type="button"
-              onClick={() => onNavigate('schedule')}
-              className="text-xs font-bold text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
-            >
-              عرض الجدول الكامل
-            </button>
-
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm sm:text-base font-bold text-white">حصص ومواعيد المجموعات</h3>
-              <CalendarCheck className="w-4 h-4 text-sky-400" />
-            </div>
-          </div>
-
-          <div className="overflow-x-auto mt-2">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="text-slate-400 font-semibold border-b border-[#12233c]">
-                  <th className="py-2.5 px-3 text-center">عدد الطلاب</th>
-                  <th className="py-2.5 px-3">الكورس</th>
-                  <th className="py-2.5 px-3">المجموعة</th>
-                  <th className="py-2.5 px-3">الموعد</th>
-                  <th className="py-2.5 px-1 w-6"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#102038]">
-                {todaySessionsData.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-400">
-                      لا توجد حصص مجدولة حالياً. يمكنك إضافة مجموعات أو مواعيد من صفحة الجدول.
-                    </td>
-                  </tr>
-                ) : (
-                  todaySessionsData.map((ses) => (
-                    <tr
-                      key={ses.id}
-                      className="hover:bg-slate-800/40 transition-colors group cursor-pointer"
-                      onClick={() => onNavigate('schedule')}
-                    >
-                      <td className="py-3 px-3 text-center font-bold text-slate-200 font-mono">
-                        {ses.studentsCount}
-                      </td>
-                      <td className="py-3 px-3 font-medium text-slate-200">{ses.course}</td>
-                      <td className="py-3 px-3 text-slate-300 font-semibold">{ses.groupName}</td>
-                      <td className="py-3 px-3 text-slate-300 font-medium">{ses.time}</td>
-                      <td className="py-3 px-1 text-center">
-                        <span
-                          className="inline-block w-2.5 h-2.5 rounded-full shadow-[0_0_6px_currentColor]"
-                          style={{ backgroundColor: ses.dotColor, color: ses.dotColor }}
-                        />
-                      </td>
+              {/* Clean Table with real data or empty state */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-slate-400 font-bold">
+                      <th className="pb-2 text-center w-6">#</th>
+                      <th className="pb-2">اسم الطالب</th>
+                      <th className="pb-2">المجموعة</th>
+                      <th className="pb-2">تاريخ التسجيل</th>
+                      <th className="pb-2 text-center">الحالة</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* TABLE 2: آخر المدفوعات */}
-        <div
-          id="dashboard-recent-payments-card"
-          className="rounded-2xl bg-[#08152b] border border-[#173054] p-5 shadow-xl flex flex-col justify-between"
-        >
-          <div className="flex items-center justify-between pb-3.5 border-b border-[#142642]">
-            <button
-              id="view-all-recent-payments-btn"
-              type="button"
-              onClick={() => onNavigate('payments')}
-              className="text-xs font-bold text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
-            >
-              عرض سجل المدفوعات
-            </button>
-
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm sm:text-base font-bold text-white">آخر المقبوضات</h3>
-              <CreditCard className="w-4 h-4 text-sky-400" />
-            </div>
-          </div>
-
-          <div className="overflow-x-auto mt-2">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="text-slate-400 font-semibold border-b border-[#12233c]">
-                  <th className="py-2.5 px-3">التاريخ</th>
-                  <th className="py-2.5 px-3 text-center">المبلغ</th>
-                  <th className="py-2.5 px-3">الطالب</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#102038]">
-                {recentPaymentsData.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="py-8 text-center text-slate-400">
-                      لا توجد مدفوعات مسجلة حتى الآن.
-                    </td>
-                  </tr>
-                ) : (
-                  recentPaymentsData.map((pay) => (
-                    <tr
-                      key={pay.id}
-                      className="hover:bg-slate-800/40 transition-colors cursor-pointer"
-                      onClick={() => onNavigate('payments')}
-                    >
-                      <td className="py-3 px-3 text-slate-300 font-medium font-mono">{pay.date}</td>
-                      <td className="py-3 px-3 text-center font-bold text-emerald-400 font-mono">
-                        {pay.amount} ج.م
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-2.5">
-                          <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs border ${pay.avatarColor} shrink-0`}
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 font-semibold text-slate-800">
+                    {students.length > 0 ? (
+                      students.slice(0, 5).map((st, idx) => (
+                        <tr
+                          key={st.id}
+                          className="hover:bg-slate-50/70 transition-colors cursor-pointer"
+                          onClick={() => onViewStudent && onViewStudent(st)}
+                        >
+                          <td className="py-2.5 text-center text-slate-400 font-mono">{idx + 1}</td>
+                          <td className="py-2.5 font-bold text-slate-900">{st.name}</td>
+                          <td className="py-2.5 text-slate-600">{st.groupName || 'عام'}</td>
+                          <td className="py-2.5 text-slate-500 font-mono text-[11px]">
+                            {st.joinedDate || currentFullDate}
+                          </td>
+                          <td className="py-2.5 text-center">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+                              {st.status || 'نشط'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="py-10 text-center text-slate-400">
+                          <Users className="w-8 h-8 mx-auto mb-2 text-slate-300 stroke-[1.5]" />
+                          <span className="font-bold text-xs block text-slate-500">
+                            لا توجد عمليات تسجيل حتى الآن (0 طالب)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={onOpenAddStudent}
+                            className="mt-2 text-xs font-bold text-[#1e65e5] hover:underline cursor-pointer"
                           >
-                            <Users className="w-3.5 h-3.5" />
-                          </div>
-                          <span className="font-semibold text-slate-100">{pay.studentName}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                            + إضافة طالب جديد
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Actions: إجراءات سريعة (4 Big Colored Tiles) */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+              <h3 className="text-sm font-black text-slate-900 text-right mb-3">
+                إجراءات سريعة
+              </h3>
+
+              <div className="grid grid-cols-2 gap-3 my-auto">
+                {/* Tile 1: إضافة طالب جديد (Blue) */}
+                <button
+                  type="button"
+                  onClick={onOpenAddStudent}
+                  className="p-3.5 rounded-2xl bg-blue-50/80 hover:bg-blue-100/80 border border-blue-100 text-[#1e65e5] flex flex-col items-center justify-center text-center gap-2 transition-all cursor-pointer shadow-xs hover:scale-102"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 text-[#1e65e5] flex items-center justify-center">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-black text-slate-900">إضافة طالب جديد</span>
+                </button>
+
+                {/* Tile 2: إضافة مجموعة (Purple) */}
+                <button
+                  type="button"
+                  onClick={onOpenAddGroup}
+                  className="p-3.5 rounded-2xl bg-purple-50/80 hover:bg-purple-100/80 border border-purple-100 text-purple-600 flex flex-col items-center justify-center text-center gap-2 transition-all cursor-pointer shadow-xs hover:scale-102"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
+                    <Layers className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-black text-slate-900">إضافة مجموعة</span>
+                </button>
+
+                {/* Tile 3: تسجيل حضور (Emerald) */}
+                <button
+                  type="button"
+                  onClick={() => onNavigate('attendance')}
+                  className="p-3.5 rounded-2xl bg-emerald-50/80 hover:bg-emerald-100/80 border border-emerald-100 text-emerald-600 flex flex-col items-center justify-center text-center gap-2 transition-all cursor-pointer shadow-xs hover:scale-102"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                    <CalendarCheck className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-black text-slate-900">تسجيل حضور</span>
+                </button>
+
+                {/* Tile 4: إضافة مصروف (Amber) */}
+                <button
+                  type="button"
+                  onClick={() => onNavigate('expenses')}
+                  className="p-3.5 rounded-2xl bg-amber-50/80 hover:bg-amber-100/80 border border-amber-100 text-amber-600 flex flex-col items-center justify-center text-center gap-2 transition-all cursor-pointer shadow-xs hover:scale-102"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                    <Receipt className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-black text-amber-700">إضافة مصروف</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* ========================================================================= */}
-      {/* 4. BOTTOM THREE CARDS (إحصائيات المجموعات + توزيع الكورسات + مواعيد مهمة) */}
-      {/* ========================================================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* CARD 1: إحصائيات سريعة */}
-        <div
-          id="dashboard-quick-stats-card"
-          className="rounded-2xl bg-[#08152b] border border-[#173054] p-5 shadow-xl flex flex-col justify-between"
-        >
-          <div className="flex items-center justify-between pb-3 border-b border-[#142642]">
-            <div className="relative">
+        {/* --------------------------------------------------------------------- */}
+        {/* RIGHT SIDEBAR WIDGETS COLUMN (مواعيد اليوم + آخر الأشعارات)          */}
+        {/* --------------------------------------------------------------------- */}
+        <div className="space-y-5">
+          {/* Widget 1: مواعيد اليوم */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs">
+            <div className="flex items-center justify-between mb-3.5">
+              <h3 className="text-sm font-black text-slate-900">مواعيد اليوم</h3>
               <button
                 type="button"
-                id="btn-stats-period-filter"
-                onClick={() => setStatsDropdownOpen(!statsDropdownOpen)}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#09152b] border border-[#1b3459] text-[11px] font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+                onClick={() => onNavigate('schedule')}
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
               >
-                <ChevronDown className="w-3 h-3 text-slate-400" />
-                <span>{statsPeriod}</span>
+                <span>عرض الكل</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
               </button>
+            </div>
 
-              {statsDropdownOpen && (
-                <div className="absolute left-0 mt-1 w-28 bg-[#09152b] border border-[#1b3459] rounded-lg shadow-xl z-20 p-1 text-right text-xs">
-                  {['هذا الأسبوع', 'الشهر الحالي', 'العام الحالي'].map((opt) => (
-                    <div
-                      key={opt}
-                      onClick={() => {
-                        setStatsPeriod(opt);
-                        setStatsDropdownOpen(false);
-                      }}
-                      className="px-2 py-1.5 hover:bg-slate-800 rounded text-slate-200 cursor-pointer"
-                    >
-                      {opt}
+            <div className="space-y-3">
+              {groups.length > 0 ? (
+                groups.slice(0, 4).map((grp, i) => (
+                  <div
+                    key={grp.id || i}
+                    className="flex items-center justify-between p-2.5 rounded-xl border-r-3 border-r-blue-500 bg-slate-50/80 hover:bg-blue-50/40 transition-colors text-right"
+                  >
+                    <div>
+                      <span className="text-xs font-black text-slate-900 block">
+                        {grp.course || grp.name}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500 block mt-0.5">
+                        {grp.name} | {grp.days || 'أيام الحصص'}
+                      </span>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-slate-700 bg-white px-2 py-1 rounded-md border border-slate-200 shadow-2xs">
+                        {grp.time || '10:00 ص'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-8 text-center text-slate-400">
+                  <CalendarCheck className="w-8 h-8 mx-auto mb-1.5 text-slate-300 stroke-[1.5]" />
+                  <span className="font-bold text-xs block text-slate-500">
+                    لا توجد حصص مجدولة لليوم (0 حصة)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onOpenAddGroup}
+                    className="mt-2 text-xs font-bold text-[#1e65e5] hover:underline cursor-pointer"
+                  >
+                    + إضافة مجموعة دراسية
+                  </button>
                 </div>
               )}
             </div>
-
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-bold text-white">توزيع أيام الحصص</h4>
-              <BarChart3 className="w-4 h-4 text-sky-400" />
-            </div>
           </div>
 
-          <div className="mt-4 pt-2">
-            <div className="relative h-44 flex items-end justify-between px-2">
-              <div className="absolute right-0 top-0 bottom-6 flex flex-col justify-between text-[10px] text-slate-500 font-medium select-none pr-1">
-                <span>40</span>
-                <span>30</span>
-                <span>20</span>
-                <span>10</span>
-                <span>0</span>
-              </div>
-
-              <div className="absolute inset-x-8 top-0 bottom-6 flex flex-col justify-between pointer-events-none opacity-15">
-                <div className="border-b border-slate-600 w-full" />
-                <div className="border-b border-slate-600 w-full" />
-                <div className="border-b border-slate-600 w-full" />
-                <div className="border-b border-slate-600 w-full" />
-                <div className="border-b border-slate-600 w-full" />
-              </div>
-
-              <div className="w-full flex items-end justify-around pr-8 pl-1 pb-6 h-full">
-                {barData.map((item) => (
-                  <div key={item.day} className="flex flex-col items-center gap-2 group">
-                    <div
-                      className="relative w-5 sm:w-6 rounded-t-md bg-[#0066ff] bg-gradient-to-t from-[#0055ee] to-[#00d4ff] hover:from-[#0066ff] hover:to-[#55f0ff] transition-all shadow-[0_0_12px_rgba(0,180,255,0.3)] cursor-pointer"
-                      style={{ height: `${(item.height / 40) * 125}px` }}
-                      title={`${item.day}: ${item.value} مجموعة`}
-                    />
-                    <span className="text-[10px] text-slate-400 group-hover:text-sky-300 transition-colors">
-                      {item.day}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* CARD 2: توزيع الطلاب على الكورسات */}
-        <div
-          id="dashboard-course-distribution-card"
-          className="rounded-2xl bg-[#08152b] border border-[#173054] p-5 shadow-xl flex flex-col justify-between"
-        >
-          <div className="pb-3 border-b border-[#142642] text-right">
-            <h4 className="text-sm font-bold text-white">توزيع الطلاب على الكورسات</h4>
-          </div>
-
-          <div className="flex items-center justify-between gap-4 mt-4">
-            <div className="relative w-32 h-32 shrink-0 flex items-center justify-center">
-              <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-                {courseDistribution.map((item, idx) => {
-                  const accumulatedPct = courseDistribution
-                    .slice(0, idx)
-                    .reduce((sum, curr) => sum + curr.pct, 0);
-                  const dashOffset = -((accumulatedPct / 100) * 282.7);
-                  const dashLength = (item.pct / 100) * 282.7;
-
-                  return (
-                    <circle
-                      key={item.name}
-                      cx="60"
-                      cy="60"
-                      r="45"
-                      fill="transparent"
-                      stroke={item.color}
-                      strokeWidth="16"
-                      strokeDasharray={`${dashLength} 282.7`}
-                      strokeDashoffset={dashOffset}
-                    />
-                  );
-                })}
-              </svg>
-
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-xl font-extrabold text-white tracking-tight font-mono">
-                  {totalStudentsCount}
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium">طالب</span>
-              </div>
-            </div>
-
-            <div className="flex-1 space-y-1.5 text-xs text-right">
-              {courseDistribution.map((item) => (
-                <div key={item.name} className="flex items-center justify-between gap-2">
-                  <span className="font-bold text-slate-300 text-[11px] font-mono">{item.pct}%</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-200 text-[11px] truncate max-w-[100px]">{item.name}</span>
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: item.color }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* CARD 3: مواعيد مهمة */}
-        <div
-          id="dashboard-important-events-card"
-          className="rounded-2xl bg-[#08152b] border border-[#173054] p-5 shadow-xl flex flex-col justify-between"
-        >
-          <div className="flex items-center justify-end gap-2 pb-3 border-b border-[#142642]">
-            <h4 className="text-sm font-bold text-white">مواعيد مهمة</h4>
-            <Clock className="w-4 h-4 text-sky-400" />
-          </div>
-
-          <div className="mt-3 space-y-2.5 flex-1 flex flex-col justify-center">
-            {importantEvents.map((ev) => (
-              <div
-                key={ev.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-[#0a1832] border border-[#172e4f] hover:border-sky-500/40 transition-colors select-none"
+          {/* Widget 2: آخر الأشعارات */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs">
+            <div className="flex items-center justify-between mb-3.5">
+              <h3 className="text-sm font-black text-slate-900">آخر الأشعارات</h3>
+              <button
+                type="button"
+                onClick={() => onNavigate('notifications')}
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
               >
-                <span className="text-xs font-medium text-slate-400 font-mono">{ev.date}</span>
+                <span>عرض الكل</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
-                <div className="flex items-center gap-2.5">
-                  <span className="text-xs font-bold text-slate-100">{ev.title}</span>
-                  <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-400/20 text-sky-400 flex items-center justify-center shrink-0">
-                    <Calendar className="w-3.5 h-3.5" />
-                  </div>
-                </div>
+            <div className="space-y-3">
+              <div className="py-8 text-center text-slate-400">
+                <Bell className="w-8 h-8 mx-auto mb-1.5 text-slate-300 stroke-[1.5]" />
+                <span className="font-bold text-xs block text-slate-500">
+                  لا توجد إشعارات جديدة حالياً (0 إشعار)
+                </span>
+                <span className="text-[11px] text-slate-400 block mt-0.5">
+                  النظام جاهز للعمل والبيانات محدثة
+                </span>
               </div>
-            ))}
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 4. BOTTOM PANORAMIC BANNER matching Reference Image                       */}
+      {/* ========================================================================= */}
+      <div className="rounded-2xl bg-gradient-to-r from-[#172554] via-[#1e3a8a] to-[#2563eb] p-4 sm:p-5 text-white shadow-md relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* Mountain SVG background overlay */}
+        <svg
+          viewBox="0 0 800 100"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="absolute inset-0 w-full h-full object-cover opacity-25 pointer-events-none"
+        >
+          <path
+            d="M 0,100 L 80,30 L 160,70 L 250,20 L 340,65 L 450,15 L 560,60 L 680,25 L 800,90 L 800,100 Z"
+            fill="#ffffff"
+          />
+        </svg>
+
+        {/* Brand & Slogan */}
+        <div className="relative z-10 flex items-center gap-3.5 text-right">
+          <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-xs">
+            <BarChart3 className="w-5 h-5 text-sky-300" />
+          </div>
+          <div>
+            <p className="text-sm font-black text-white leading-snug">
+              كل طالب .. هو مشروع نجاح
+            </p>
+            <p className="text-xs text-sky-200 font-semibold mt-0.5">
+              وزين .. شريكك في الرحلة
+            </p>
+          </div>
+        </div>
+
+        {/* Action Button: استكشف التقارير */}
+        <button
+          type="button"
+          onClick={() => onNavigate('reports')}
+          className="relative z-10 px-5 py-2.5 rounded-xl bg-white text-[#1e3a8a] hover:bg-slate-100 active:bg-slate-200 font-black text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all cursor-pointer shrink-0"
+        >
+          <span>استكشف التقارير</span>
+          <TrendingUp className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

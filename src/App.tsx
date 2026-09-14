@@ -32,7 +32,11 @@ import { SchedulePage } from './pages/SchedulePage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SearchPage } from './pages/SearchPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { UsersPage } from './pages/UsersPage';
+import { LinksPage } from './pages/LinksPage';
 import { AIAssistantPage } from './pages/AIAssistantPage';
+import { ExpensesPage } from './pages/ExpensesPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { LoginPage } from './pages/LoginPage';
 import { TopBar } from './components/TopBar';
 
@@ -821,7 +825,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#060c18] text-slate-100 flex flex-col font-sans" dir="rtl">
+    <div className="min-h-screen bg-[#f1f5f9] text-slate-900 flex flex-col font-sans" dir="rtl">
       {/* Toast Notification */}
       {notification && (
         <Notification
@@ -831,7 +835,7 @@ export default function App() {
         />
       )}
 
-      {/* Main Navigation: Desktop Sidebar (Left side matching Reference Image) + Mobile Drawer */}
+      {/* Main Navigation: Desktop Sidebar (Right side matching Reference Image) + Mobile Drawer */}
       <Navigation
         currentPage={currentPage}
         onSelectPage={setCurrentPage}
@@ -842,8 +846,8 @@ export default function App() {
         onLogout={handleLogout}
       />
 
-      {/* Main Content Area (offset left for 260px sidebar on desktop) */}
-      <div className="lg:ml-[260px] flex-1 flex flex-col min-w-0 bg-[#060c18]">
+      {/* Main Content Area (offset left for 260px sidebar on desktop matching reference image) */}
+      <div className="lg:ml-[260px] flex-1 flex flex-col min-w-0 bg-[#f1f5f9]">
         {/* Sticky TopBar matching Reference Image */}
         <TopBar
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
@@ -855,28 +859,30 @@ export default function App() {
             }
           }}
           onLogout={handleLogout}
+          onNavigate={setCurrentPage}
+          managerName={centerSettings.managerName || 'Miss Sharbat'}
         />
 
         {/* Global Supabase Sync & Loading Bar */}
         {isLoading && (
-          <div className="bg-sky-950/40 border-b border-sky-800/30 px-4 py-2 flex items-center justify-between text-xs text-sky-300">
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+          <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between text-xs text-[#0066ff]">
+            <div className="flex items-center gap-2 font-medium">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0066ff]" />
               <span>جاري مزامنة وتحديث البيانات مع Supabase...</span>
             </div>
           </div>
         )}
 
         {syncError && !isLoading && (
-          <div className="bg-amber-950/40 border-b border-amber-800/30 px-4 py-2 flex items-center justify-between text-xs text-amber-300">
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-xs text-amber-800">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>{syncError}</span>
             </div>
             <button
               type="button"
               onClick={() => loadAllDataFromSupabase()}
-              className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-2.5 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
             >
               <RefreshCw className="w-3 h-3" />
               <span>إعادة المحاولة</span>
@@ -893,15 +899,24 @@ export default function App() {
                 setStudentToEdit(null);
                 setStudentModalOpen(true);
               }}
+              onOpenAddGroup={() => {
+                setGroupToEdit(null);
+                setGroupModalOpen(true);
+              }}
               onOpenRecordPayment={() => {
                 setPreselectedStudentForPayment(undefined);
                 setPaymentModalOpen(true);
+              }}
+              onViewStudent={(student) => {
+                setStudentToView(student);
+                setViewStudentModalOpen(true);
               }}
               students={students}
               groups={groups}
               payments={payments}
               sessions={sessions}
               attendance={attendance}
+              managerName={centerSettings.managerName || 'Miss Sharbat'}
             />
           )}
 
@@ -972,7 +987,19 @@ export default function App() {
             />
           )}
 
+          {currentPage === 'expenses' && (
+            <ExpensesPage />
+          )}
+
+          {currentPage === 'notifications' && (
+            <NotificationsPage students={students} groups={groups} />
+          )}
+
           {currentPage === 'schedule' && (
+            <SchedulePage sessions={sessions} groups={groups} />
+          )}
+
+          {currentPage === 'exams' && (
             <SchedulePage sessions={sessions} groups={groups} />
           )}
 
@@ -1021,6 +1048,14 @@ export default function App() {
               payments={payments}
               attendance={attendance}
             />
+          )}
+
+          {currentPage === 'users' && (
+            <UsersPage />
+          )}
+
+          {currentPage === 'links' && (
+            <LinksPage />
           )}
 
           {currentPage === 'settings' && (

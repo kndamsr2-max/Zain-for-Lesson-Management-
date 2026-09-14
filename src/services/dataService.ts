@@ -33,11 +33,11 @@ let memoryStore = {
   staticLinks: [] as StaticLink[],
   settings: {
     centerName: 'سنتر زين التعليمي',
-    managerName: 'أ/ زين',
+    managerName: 'Miss Sharbat',
     phone: '01000000000',
     contactInfo: 'القاهرة - مصر',
     currency: 'ج.م',
-    academicYear: '2025 - 2026',
+    academicYear: `${new Date().getFullYear()} - ${new Date().getFullYear() + 1}`,
     notes: 'نظام إدارة متقدم للمراكز التعليمية والدروس الخصوصية',
   } as CenterSettings,
 };
@@ -1126,5 +1126,35 @@ export const staticLinksService = {
     } catch (err: any) {
       return { success: true, error: null };
     }
+  },
+
+  // Aliases for compatibility across pages
+  async fetchLinks(): Promise<StaticLink[]> {
+    const res = await this.fetchStaticLinks();
+    return res.data || [];
+  },
+  async getAll(): Promise<StaticLink[]> {
+    const res = await this.fetchStaticLinks();
+    return res.data || [];
+  },
+  async addLink(linkData: Omit<StaticLink, 'id'>): Promise<{ success: boolean; link?: StaticLink; message?: string }> {
+    const res = await this.createStaticLink(linkData);
+    return {
+      success: !res.error && !!res.data,
+      link: res.data || undefined,
+      message: res.error || undefined,
+    };
+  },
+  async create(linkData: Omit<StaticLink, 'id'>): Promise<{ data: StaticLink | null; error: string | null }> {
+    return this.createStaticLink(linkData);
+  },
+  async update(id: string, updates: Partial<Omit<StaticLink, 'id'>>): Promise<{ data: StaticLink | null; error: string | null }> {
+    return this.updateStaticLink(id, updates);
+  },
+  async deleteLink(id: string): Promise<{ success: boolean; error: string | null }> {
+    return this.deleteStaticLink(id);
+  },
+  async delete(id: string): Promise<{ success: boolean; error: string | null }> {
+    return this.deleteStaticLink(id);
   },
 };

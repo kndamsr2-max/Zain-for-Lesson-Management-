@@ -59,30 +59,27 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   isSupabaseConnected,
   onReloadAllData,
 }) => {
-  const [activeTab, setActiveTab] = useState<'center' | 'connection' | 'links'>('connection');
+  const [activeTab, setActiveTab] = useState<'connection' | 'links' | 'center'>('connection');
+
+  // Form states for Center Settings
   const [formData, setFormData] = useState<CenterSettings>({ ...settings });
   const [isSaving, setIsSaving] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{
-    text: string;
-    type: 'success' | 'error' | 'info';
-  } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   // Connection settings state
   const initialConfig = getCurrentConfig();
-  const [supabaseUrlInput, setSupabaseUrlInput] = useState(initialConfig.url);
-  const [supabaseAnonKeyInput, setSupabaseAnonKeyInput] = useState(initialConfig.anonKey);
-  const [connectionTestResult, setConnectionTestResult] = useState<ConnectionTestResult | null>(null);
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState<string>(initialConfig.url);
+  const [supabaseAnonKeyInput, setSupabaseAnonKeyInput] = useState<string>(initialConfig.anonKey);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isSavingConnection, setIsSavingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<ConnectionTestResult | null>(null);
 
   // Static Links state
-  const [staticLinks, setStaticLinks] = useState<StaticLink[]>(() =>
-    staticLinksService.loadStaticLinks()
-  );
+  const [staticLinks, setStaticLinks] = useState<StaticLink[]>([]);
   const [isLoadingLinks, setIsLoadingLinks] = useState(false);
   const [linksNotice, setLinksNotice] = useState<string | null>(null);
 
-  // Modal / Form state for Static Links
+  // Add/Edit link modal
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<StaticLink | null>(null);
   const [linkFormData, setLinkFormData] = useState<{
@@ -99,21 +96,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     orderIndex: 0,
   });
 
-  // Load static links from database on mount or tab change
+  // Sync settings prop into formData
+  useEffect(() => {
+    setFormData({ ...settings });
+  }, [settings]);
+
+  // Load static links
   const refreshLinks = async () => {
     setIsLoadingLinks(true);
     try {
-      const res = await staticLinksService.fetchStaticLinks();
-      setStaticLinks(res.data);
-      if (res.needsMigration) {
-        setLinksNotice(
-          'تنبيه: جدول "static_links" يحتاج إلى تنفيذ الـ SQL في Supabase ليتم حفظ الروابط دائماً في السحاب.'
-        );
-      } else {
-        setLinksNotice(null);
-      }
+      const data = await staticLinksService.getAll();
+      setStaticLinks(data);
     } catch {
-      // Graceful fallback
+      setLinksNotice('تعذر تحميل الروابط الثابتة من قاعدة البيانات.');
     } finally {
       setIsLoadingLinks(false);
     }
@@ -123,16 +118,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     refreshLinks();
   }, []);
 
-  // Quick initial test of current connection
-  useEffect(() => {
-    const runQuickCheck = async () => {
-      const res = await checkSupabaseConnection();
-      setConnectionTestResult(res);
-    };
-    runQuickCheck();
-  }, []);
-
-  const handleChange = (field: keyof CenterSettings, value: any) => {
+  const handleChange = (field: keyof CenterSettings, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -140,10 +126,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => {
-        if (reader.result) {
-          handleChange('logoUrl', reader.result as string);
-        }
+      reader.onloadend = () => {
+        setFormData((prev) => ({ ...prev, logoUrl: reader.result as string }));
       };
       reader.readAsDataURL(file);
     }
@@ -248,12 +232,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
       // Reload all app data from Supabase live
       if (onReloadAllData) {
-        await onReloadAllData();
+        try {
+          await onReloadAllData();
+        } catch (e) {
+          console.warn('Data reload failed', e);
+        }
       }
-      refreshLinks();
     } else {
       setStatusMessage({
-        text: `تم حفظ الإعدادات لكن الاتصال واجه تنبيهاً: ${testRes.message}`,
+        text: `تم حفظ الإعدادات ولكن الاتصال لم ينجح: ${testRes.message}`,
         type: 'error',
       });
     }
@@ -283,71 +270,60 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       url: link.url,
       description: link.description || '',
       isActive: link.isActive,
-      orderIndex: link.orderIndex,
+      orderIndex: link.orderIndex || 0,
     });
     setLinkModalOpen(true);
   };
 
   const handleSaveLinkModal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!linkFormData.title.trim() || !linkFormData.url.trim()) return;
+    if (!linkFormData.title || !linkFormData.url) return;
 
-    if (editingLink) {
-      const res = await staticLinksService.updateStaticLink(editingLink.id, {
-        title: linkFormData.title.trim(),
-        url: linkFormData.url.trim(),
-        description: linkFormData.description.trim(),
-        isActive: linkFormData.isActive,
-        orderIndex: linkFormData.orderIndex,
-      });
-      if (res.needsMigration) {
-        setLinksNotice(
-          'تم تحديث الرابط. تنبيه: يلزم تنفيذ SQL في Supabase لضمان بقائه بعد تحديث السيرفر.'
-        );
+    try {
+      if (editingLink) {
+        await staticLinksService.update(editingLink.id, linkFormData);
+      } else {
+        await staticLinksService.create(linkFormData);
       }
-    } else {
-      const res = await staticLinksService.createStaticLink({
-        title: linkFormData.title.trim(),
-        url: linkFormData.url.trim(),
-        description: linkFormData.description.trim(),
-        isActive: linkFormData.isActive,
-        orderIndex: linkFormData.orderIndex,
-      });
-      if (res.needsMigration) {
-        setLinksNotice(
-          'تم حفظ الرابط. تنبيه: يلزم تنفيذ SQL في Supabase لضمان بقائه بعد تحديث السيرفر.'
-        );
-      }
+      setLinkModalOpen(false);
+      await refreshLinks();
+    } catch {
+      alert('حدث خطأ أثناء حفظ الرابط. يرجى التأكد من اتصال قاعدة البيانات.');
     }
-
-    setLinkModalOpen(false);
-    refreshLinks();
   };
 
   const handleDeleteLink = async (id: string) => {
-    if (confirm('هل أنت متأكد من حذف هذا الرابط؟')) {
-      await staticLinksService.deleteStaticLink(id);
-      refreshLinks();
+    if (window.confirm('هل أنت متأكد من رغبتك في حذف هذا الرابط نهائياً؟')) {
+      try {
+        await staticLinksService.delete(id);
+        await refreshLinks();
+      } catch {
+        alert('تعذر حذف الرابط من قاعدة البيانات.');
+      }
     }
   };
 
   const handleToggleLinkActive = async (link: StaticLink) => {
-    await staticLinksService.updateStaticLink(link.id, {
-      isActive: !link.isActive,
-    });
-    refreshLinks();
+    try {
+      await staticLinksService.update(link.id, { isActive: !link.isActive });
+      await refreshLinks();
+    } catch {
+      alert('تعذر تحديث حالة الرابط.');
+    }
   };
 
   return (
-    <div className="space-y-6 select-none max-w-5xl mx-auto" dir="rtl">
+    <div className="space-y-6 select-none" dir="rtl">
       {/* Header */}
-      <div className="bg-[#08152b] rounded-2xl border border-[#173054] p-5 shadow-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2.5">
-            <SettingsIcon className="w-5 h-5 text-sky-400" />
-            <span>لوحة الإعدادات والربط السحابي</span>
+          <h2 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#0066ff] flex items-center justify-center border border-blue-100">
+              <SettingsIcon className="w-5 h-5" />
+            </div>
+            <span>إعدادات النظام والاتصال</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
             إعدادات اتصال Supabase، الروابط الثابتة المخصصة، وبيانات المركز التعليمي
           </p>
         </div>
@@ -356,27 +332,27 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <span
             className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 ${
               isSupabaseConnected || connectionTestResult?.status === 'connected'
-                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'
             }`}
           >
             <Shield className="w-3.5 h-3.5" />
             {isSupabaseConnected || connectionTestResult?.status === 'connected'
-              ? 'Supabase متصل'
+              ? 'قاعدة البيانات متصلة'
               : 'اتصال غير مؤكد'}
           </span>
         </div>
       </div>
 
       {/* Tabs Switcher */}
-      <div className="flex items-center gap-2 p-1.5 bg-[#08152b] rounded-2xl border border-[#173054] overflow-x-auto">
+      <div className="flex items-center gap-2 p-1.5 bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveTab('connection')}
           className={`flex-1 min-w-[140px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
             activeTab === 'connection'
-              ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-[#0c1c38]'
+              ? 'bg-[#0066ff] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
           <Database className="w-4 h-4" />
@@ -388,8 +364,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           onClick={() => setActiveTab('links')}
           className={`flex-1 min-w-[140px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
             activeTab === 'links'
-              ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-[#0c1c38]'
+              ? 'bg-[#0066ff] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
           <Link2 className="w-4 h-4" />
@@ -401,8 +377,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           onClick={() => setActiveTab('center')}
           className={`flex-1 min-w-[140px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
             activeTab === 'center'
-              ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-[#0c1c38]'
+              ? 'bg-[#0066ff] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
           <Building2 className="w-4 h-4" />
@@ -415,16 +391,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           id="settings-status-alert"
           className={`p-4 rounded-xl border text-xs sm:text-sm font-bold flex items-center gap-2.5 ${
             statusMessage.type === 'success'
-              ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : statusMessage.type === 'error'
-              ? 'bg-rose-500/20 border-rose-500/30 text-rose-200'
-              : 'bg-sky-500/20 border-sky-500/30 text-sky-200'
+              ? 'bg-rose-50 border-rose-200 text-rose-800'
+              : 'bg-blue-50 border-blue-200 text-blue-800'
           }`}
         >
           {statusMessage.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           ) : (
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
           )}
           <span>{statusMessage.text}</span>
         </div>
@@ -435,47 +411,47 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'connection' && (
         <div className="space-y-6">
-          <div className="bg-[#08152b] rounded-2xl border border-[#173054] shadow-xl overflow-hidden">
-            <div className="p-4 border-b border-[#142642] bg-[#0a1832] flex items-center justify-between">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <Database className="w-5 h-5 text-sky-400" />
-                <h3 className="text-sm font-bold text-white">إعدادات الاتصال بقاعدة بيانات Supabase</h3>
+                <Database className="w-5 h-5 text-[#0066ff]" />
+                <h3 className="text-sm font-bold text-slate-800">إعدادات الاتصال بقاعدة بيانات Supabase</h3>
               </div>
-              <span className="text-xs text-slate-400 font-mono">
+              <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-bold">
                 {initialConfig.isEnvConfigured ? 'Vercel Env: متوفرة' : 'Vercel Env: غير معينة'}
               </span>
             </div>
 
             <div className="p-5 sm:p-6 space-y-5">
               {/* Instructions box */}
-              <div className="p-4 rounded-xl bg-[#060c18] border border-[#173054] text-xs text-slate-300 space-y-2">
-                <p className="font-bold text-sky-300 flex items-center gap-1.5">
+              <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-200 text-xs text-slate-700 space-y-2">
+                <p className="font-bold text-[#0066ff] flex items-center gap-1.5">
                   <Server className="w-4 h-4" />
                   <span>دليل إعداد الاتصال في بيئة الإنتاج (Vercel):</span>
                 </p>
-                <p className="leading-relaxed text-slate-400">
+                <p className="leading-relaxed text-slate-600">
                   لضمان الاتصال التلقائي الدائم عند كل نشر، أضف المتغيرات التالية في لوحة تحكم Vercel (Project Settings &rarr; Environment Variables):
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 font-mono text-[11px]">
-                  <div className="p-2 bg-[#09152b] rounded-lg border border-[#1b3459] text-sky-300">
-                    <span className="text-slate-400">اسم المتغير: </span>
-                    <strong className="text-white">VITE_SUPABASE_URL</strong>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 font-mono text-xs">
+                  <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-slate-800">
+                    <span className="text-slate-500">اسم المتغير: </span>
+                    <strong className="text-[#0066ff]">VITE_SUPABASE_URL</strong>
                   </div>
-                  <div className="p-2 bg-[#09152b] rounded-lg border border-[#1b3459] text-sky-300">
-                    <span className="text-slate-400">اسم المتغير: </span>
-                    <strong className="text-white">VITE_SUPABASE_ANON_KEY</strong>
+                  <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-slate-800">
+                    <span className="text-slate-500">اسم المتغير: </span>
+                    <strong className="text-[#0066ff]">VITE_SUPABASE_ANON_KEY</strong>
                   </div>
                 </div>
-                <p className="text-[11px] text-amber-300/90 pt-1">
-                  * تنبيه أمني: استخدم فقط مفتاح <strong>Anon Key (Public)</strong> وممنوع نهائياً وضع مفتاح Service Role Key.
+                <p className="text-[11px] text-amber-700 font-semibold pt-1">
+                  * تنبيه أمني: استخدم فقط مفتاح <strong>Anon Key (Public)</strong> وممنوع نهائياً استخدام مفتاح Service Role Key في الواجهة.
                 </p>
               </div>
 
               {/* Form Inputs */}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    رابط مشروع Supabase (Supabase URL) <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    رابط مشروع Supabase (Supabase URL) <span className="text-rose-500">*</span>
                   </label>
                   <input
                     id="input-supabase-url"
@@ -484,13 +460,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     value={supabaseUrlInput}
                     onChange={(e) => setSupabaseUrlInput(e.target.value)}
                     placeholder="https://xyzcompany.supabase.co"
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    مفتاح المشروع المجهول (Supabase Anon Key) <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    مفتاح المشروع المجهول (Supabase Anon Key) <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -500,9 +476,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       value={supabaseAnonKeyInput}
                       onChange={(e) => setSupabaseAnonKeyInput(e.target.value)}
                       placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                      className="w-full px-3.5 py-2.5 pl-10 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500 font-mono"
+                      className="w-full px-3.5 py-2.5 pl-10 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white font-mono"
                     />
-                    <KeyRound className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   </div>
                 </div>
               </div>
@@ -512,35 +488,35 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 <div
                   className={`p-4 rounded-xl border text-xs space-y-2 ${
                     connectionTestResult.status === 'connected'
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : connectionTestResult.status === 'error'
-                      ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                      : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      ? 'bg-rose-50 border-rose-200 text-rose-800'
+                      : 'bg-amber-50 border-amber-200 text-amber-800'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold flex items-center gap-1.5">
                       {connectionTestResult.status === 'connected' ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                       ) : (
-                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
                       )}
                       <span>حالة الاتصال: {connectionTestResult.status === 'connected' ? 'متصل بنجاح' : connectionTestResult.status === 'error' ? 'خطأ في الاتصال' : 'غير مهيأ'}</span>
                     </span>
-                    <span className="text-[11px] opacity-75">{connectionTestResult.timestamp}</span>
+                    <span className="text-[11px] opacity-75 font-mono">{connectionTestResult.timestamp}</span>
                   </div>
 
                   <p className="leading-relaxed">{connectionTestResult.message}</p>
 
                   {connectionTestResult.latencyMs !== undefined && (
-                    <div className="flex items-center gap-3 pt-1 text-[11px] opacity-80">
+                    <div className="flex items-center gap-3 pt-1 text-[11px] opacity-80 font-mono">
                       <span>زمن الاستجابة: {connectionTestResult.latencyMs} مللي ثانية</span>
                       <span>الرابط: {connectionTestResult.projectUrl}</span>
                     </div>
                   )}
 
                   {connectionTestResult.errorDetail && (
-                    <div className="p-2 bg-black/40 rounded-lg text-[11px] font-mono text-rose-400 mt-2 break-all">
+                    <div className="p-2 bg-slate-100 rounded-lg text-[11px] font-mono text-rose-700 mt-2 break-all border border-rose-200">
                       {connectionTestResult.errorDetail}
                     </div>
                   )}
@@ -548,15 +524,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               )}
 
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-[#142642]">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
                 <button
                   id="btn-test-supabase-connection"
                   type="button"
                   onClick={handleTestConnection}
                   disabled={isTestingConnection}
-                  className="w-full sm:w-auto px-5 py-2.5 bg-[#112444] hover:bg-[#183360] text-sky-300 border border-sky-500/30 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                  className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isTestingConnection ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 text-[#0066ff] ${isTestingConnection ? 'animate-spin' : ''}`} />
                   <span>{isTestingConnection ? 'جاري فحص الاتصال...' : 'اختبار الاتصال'}</span>
                 </button>
 
@@ -566,7 +542,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     type="button"
                     onClick={handleSaveConnectionSettings}
                     disabled={isSavingConnection}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-sky-600/20 cursor-pointer disabled:opacity-50"
+                    className="w-full sm:w-auto px-6 py-2.5 bg-[#0066ff] hover:bg-[#0055ee] text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50"
                   >
                     <Save className="w-4 h-4" />
                     <span>{isSavingConnection ? 'جاري الحفظ والتطبيق...' : 'حفظ وتفعيل الاتصال'}</span>
@@ -583,13 +559,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'links' && (
         <div className="space-y-6">
-          <div className="bg-[#08152b] rounded-2xl border border-[#173054] shadow-xl overflow-hidden">
-            <div className="p-4 border-b border-[#142642] bg-[#0a1832] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <Link2 className="w-5 h-5 text-sky-400" />
+                <Link2 className="w-5 h-5 text-[#0066ff]" />
                 <div>
-                  <h3 className="text-sm font-bold text-white">إدارة الروابط الثابتة والمهمة</h3>
-                  <p className="text-[11px] text-slate-400">
+                  <h3 className="text-sm font-bold text-slate-800">إدارة الروابط الثابتة والمهمة</h3>
+                  <p className="text-xs text-slate-500">
                     روابط المنصات التعليمية، ملفات الدرايف، جروبات الواتساب، والروابط السريعة
                   </p>
                 </div>
@@ -599,7 +575,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 <button
                   type="button"
                   onClick={refreshLinks}
-                  className="p-2 bg-[#112444] hover:bg-[#183360] text-slate-300 rounded-xl transition-colors cursor-pointer"
+                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer border border-slate-200"
                   title="تحديث القائمة"
                 >
                   <RefreshCw className={`w-4 h-4 ${isLoadingLinks ? 'animate-spin' : ''}`} />
@@ -608,7 +584,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   id="btn-add-static-link"
                   type="button"
                   onClick={handleOpenAddLink}
-                  className="px-4 py-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-sky-600/20 cursor-pointer"
+                  className="px-4 py-2 bg-[#0066ff] hover:bg-[#0055ee] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>إضافة رابط جديد</span>
@@ -618,49 +594,49 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
             <div className="p-5 sm:p-6 space-y-4">
               {linksNotice && (
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>{linksNotice}</span>
                 </div>
               )}
 
               {staticLinks.length === 0 ? (
-                <div className="p-8 text-center rounded-xl bg-[#060c18] border border-[#142642] space-y-3">
-                  <Link2 className="w-8 h-8 text-slate-600 mx-auto" />
-                  <p className="text-xs text-slate-400">لا توجد روابط ثابتة مسجلة بعد.</p>
+                <div className="p-8 text-center rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <Link2 className="w-8 h-8 text-slate-400 mx-auto" />
+                  <p className="text-xs text-slate-500">لا توجد روابط ثابتة مسجلة بعد.</p>
                   <button
                     type="button"
                     onClick={handleOpenAddLink}
-                    className="px-4 py-2 bg-[#112444] hover:bg-[#183360] text-sky-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-[#0066ff] border border-blue-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                   >
                     أضف أول رابط للسنتر الآن
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {staticLinks.map((link) => (
                     <div
                       key={link.id}
                       className={`p-4 rounded-xl border transition-all ${
                         link.isActive
-                          ? 'bg-[#09152b] border-[#1b3459] hover:border-sky-500/40'
-                          : 'bg-[#07101f]/60 border-[#142642] opacity-60'
+                          ? 'bg-white border-slate-200 hover:border-blue-300 shadow-xs'
+                          : 'bg-slate-50 border-slate-200 opacity-60'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1 flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-md bg-sky-500/10 text-sky-400 text-[11px] font-mono flex items-center justify-center border border-sky-500/20">
+                            <span className="w-5 h-5 rounded-md bg-blue-50 text-[#0066ff] text-[11px] font-mono font-bold flex items-center justify-center border border-blue-200">
                               {link.orderIndex}
                             </span>
-                            <h4 className="text-xs sm:text-sm font-bold text-white truncate">
+                            <h4 className="text-xs sm:text-sm font-bold text-slate-800 truncate">
                               {link.title}
                             </h4>
                             <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                 link.isActive
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-slate-700 text-slate-400'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-slate-100 text-slate-500'
                               }`}
                             >
                               {link.isActive ? 'مفعل' : 'مخفي'}
@@ -668,7 +644,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                           </div>
 
                           {link.description && (
-                            <p className="text-[11px] text-slate-400 line-clamp-1">
+                            <p className="text-xs text-slate-500 line-clamp-1">
                               {link.description}
                             </p>
                           )}
@@ -678,9 +654,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                               href={link.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-xs text-sky-400 hover:text-sky-300 font-mono inline-flex items-center gap-1 hover:underline truncate max-w-full"
+                              className="text-xs text-[#0066ff] hover:underline font-mono inline-flex items-center gap-1 truncate max-w-full"
                             >
-                              <ExternalLink className="w-3 h-3 shrink-0" />
+                              <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                               <span className="truncate">{link.url}</span>
                             </a>
                           </div>
@@ -692,25 +668,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                             type="button"
                             onClick={() => handleToggleLinkActive(link)}
                             title={link.isActive ? 'إخفاء الرابط' : 'تفعيل الرابط'}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-[#112444] transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                           >
-                            {link.isActive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            {link.isActive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                           </button>
                           <button
                             type="button"
                             onClick={() => handleOpenEditLink(link)}
                             title="تعديل الرابط"
-                            className="p-1.5 rounded-lg text-sky-400 hover:bg-[#112444] transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-[#0066ff] hover:bg-blue-50 transition-colors cursor-pointer"
                           >
-                            <Edit3 className="w-3.5 h-3.5" />
+                            <Edit3 className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteLink(link.id)}
                             title="حذف الرابط"
-                            className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
@@ -728,17 +704,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'center' && (
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="bg-[#08152b] rounded-2xl border border-[#173054] shadow-xl overflow-hidden">
-            <div className="p-4 border-b border-[#142642] bg-[#0a1832] flex items-center gap-2.5">
-              <Building2 className="w-5 h-5 text-sky-400" />
-              <h3 className="text-sm font-bold text-white">بيانات المركز التعليمي</h3>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50 flex items-center gap-2.5">
+              <Building2 className="w-5 h-5 text-[#0066ff]" />
+              <h3 className="text-sm font-bold text-slate-800">بيانات المركز التعليمي</h3>
             </div>
 
             <div className="p-5 sm:p-6 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    اسم المركز / السنتر <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    اسم المركز / السنتر <span className="text-rose-500">*</span>
                   </label>
                   <input
                     id="settings-center-name"
@@ -747,13 +723,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     onChange={(e) => handleChange('centerName', e.target.value)}
                     placeholder="مثال: سنتر زين التعليمي"
                     required
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    اسم المسؤول / المعلم الرئيسي <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    اسم المسؤول / المعلم الرئيسي <span className="text-rose-500">*</span>
                   </label>
                   <input
                     id="settings-manager-name"
@@ -762,15 +738,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     onChange={(e) => handleChange('managerName', e.target.value)}
                     placeholder="مثال: أ/ زين محمد"
                     required
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    رقم الهاتف والتواصل <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    رقم الهاتف والتواصل <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -781,14 +757,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       placeholder="مثال: 01000000000"
                       dir="ltr"
                       required
-                      className="w-full px-3.5 py-2.5 pr-10 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500 text-right font-mono"
+                      className="w-full px-3.5 py-2.5 pr-10 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white text-right font-mono"
                     />
                     <Phone className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     بيانات التواصل والعنوان
                   </label>
                   <div className="relative">
@@ -798,7 +774,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       value={formData.contactInfo}
                       onChange={(e) => handleChange('contactInfo', e.target.value)}
                       placeholder="مثال: القاهرة - فرع الدقي"
-                      className="w-full px-3.5 py-2.5 pr-10 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+                      className="w-full px-3.5 py-2.5 pr-10 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
                     />
                     <MapPin className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
                   </div>
@@ -807,27 +783,27 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
               {/* Logo upload / preview */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   شعار المركز (Logo)
                 </label>
-                <div className="flex items-center gap-4 p-3 bg-[#09152b] border border-[#1b3459] rounded-xl">
+                <div className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                   {formData.logoUrl ? (
                     <img
                       src={formData.logoUrl}
                       alt="شعار المركز"
-                      className="w-12 h-12 rounded-xl object-contain bg-[#060c18] border border-[#142642]"
+                      className="w-12 h-12 rounded-xl object-contain bg-white border border-slate-200 p-1"
                     />
                   ) : (
-                    <div className="w-12 h-12 rounded-xl bg-[#060c18] border border-[#142642] flex items-center justify-center text-sky-400 font-bold text-xs">
+                    <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#0066ff] font-black text-xs">
                       ZAIN
                     </div>
                   )}
                   <div className="flex-1">
                     <label
                       htmlFor="logo-file-input"
-                      className="px-3 py-1.5 bg-[#112444] hover:bg-[#16305a] text-slate-200 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors border border-[#1b3459]"
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors border border-slate-200 shadow-xs"
                     >
-                      <Upload className="w-3.5 h-3.5 text-sky-400" />
+                      <Upload className="w-3.5 h-3.5 text-[#0066ff]" />
                       <span>تغيير الشعار من جهازك</span>
                     </label>
                     <input
@@ -837,8 +813,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       onChange={handleLogoUpload}
                       className="hidden"
                     />
-                    <span className="block text-[11px] text-slate-400 mt-1">
-                      يدعم صور PNG, JPG للاستخدام في الترويسة والتقارير
+                    <span className="block text-[11px] text-slate-500 mt-1">
+                      يدعم صور PNG, JPG للاستخدام في الترويسة والتقارير والإيصالات
                     </span>
                   </div>
                 </div>
@@ -846,23 +822,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
           </div>
 
-          <div className="bg-[#08152b] rounded-2xl border border-[#173054] shadow-xl overflow-hidden">
-            <div className="p-4 border-b border-[#142642] bg-[#0a1832] flex items-center gap-2.5">
-              <Coins className="w-5 h-5 text-sky-400" />
-              <h3 className="text-sm font-bold text-white">إعدادات النظام والعملة</h3>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50 flex items-center gap-2.5">
+              <Coins className="w-5 h-5 text-[#0066ff]" />
+              <h3 className="text-sm font-bold text-slate-800">إعدادات النظام والعملة</h3>
             </div>
 
             <div className="p-5 sm:p-6 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    العملة المعتمدة <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    العملة المعتمدة <span className="text-rose-500">*</span>
                   </label>
                   <select
                     id="settings-currency"
                     value={formData.currency}
                     onChange={(e) => handleChange('currency', e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
                   >
                     <option value="ج.م">جنيه مصري (ج.م)</option>
                     <option value="ر.س">ريال سعودي (ر.س)</option>
@@ -873,7 +849,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     العام الدراسي الحالي
                   </label>
                   <input
@@ -881,14 +857,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     type="text"
                     value={formData.academicYear || ''}
                     onChange={(e) => handleChange('academicYear', e.target.value)}
-                    placeholder="مثال: 2025 - 2026"
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+                    placeholder={`مثال: ${new Date().getFullYear()} - ${new Date().getFullYear() + 1}`}
+                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   ملاحظات عامة وتذييل التقارير
                 </label>
                 <textarea
@@ -897,34 +873,34 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   value={formData.notes || ''}
                   onChange={(e) => handleChange('notes', e.target.value)}
                   placeholder="ملاحظات تظهر في تذييل التقارير والإيصالات..."
-                  className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500 resize-none"
+                  className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white resize-none"
                 />
               </div>
             </div>
           </div>
 
-          <div className="bg-[#08152b] rounded-2xl border border-[#173054] shadow-xl overflow-hidden">
-            <div className="p-4 border-b border-[#142642] bg-[#0a1832] flex items-center justify-between">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <User className="w-5 h-5 text-sky-400" />
-                <h3 className="text-sm font-bold text-white">بيانات حساب المستخدم</h3>
+                <User className="w-5 h-5 text-[#0066ff]" />
+                <h3 className="text-sm font-bold text-slate-800">بيانات حساب المستخدم</h3>
               </div>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
+              <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
                 مسؤول النظام (Admin)
               </span>
             </div>
 
             <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-bold text-white">حساب السنتر المسجل</p>
-                <p className="text-xs text-sky-400 font-mono mt-0.5">{currentUserEmail}</p>
+                <p className="text-sm font-bold text-slate-800">حساب السنتر المسجل</p>
+                <p className="text-xs text-[#0066ff] font-mono mt-0.5 font-bold">{currentUserEmail}</p>
               </div>
 
               <button
                 id="btn-settings-logout"
                 type="button"
                 onClick={onLogout}
-                className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
                 <span>تسجيل الخروج</span>
@@ -937,7 +913,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               id="btn-save-settings"
               type="submit"
               disabled={isSaving}
-              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-[#0066ff] to-[#0052cc] hover:from-[#0077ff] hover:to-[#0066ff] disabled:opacity-50 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/30 cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3 bg-[#0066ff] hover:bg-[#0055ee] disabled:opacity-50 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
             >
               <Save className="w-4 h-4" />
               <span>{isSaving ? 'جاري حفظ الإعدادات...' : 'حفظ بيانات المركز'}</span>
@@ -951,19 +927,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       {/* ========================================================================= */}
       {linkModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm select-none"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs select-none"
           dir="rtl"
         >
-          <div className="relative w-full max-w-md rounded-2xl bg-[#08152b] border border-[#1b365f] p-6 text-right space-y-4 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between pb-3 border-b border-[#142847]">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Link2 className="w-4 h-4 text-sky-400" />
+          <div className="relative w-full max-w-md rounded-2xl bg-white border border-slate-200 p-6 text-right space-y-4 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Link2 className="w-4 h-4 text-[#0066ff]" />
                 <span>{editingLink ? 'تعديل الرابط الثابت' : 'إضافة رابط ثابت جديد'}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setLinkModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -971,8 +947,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
             <form onSubmit={handleSaveLinkModal} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  اسم الرابط <span className="text-rose-400">*</span>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  اسم الرابط <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -980,13 +956,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   value={linkFormData.title}
                   onChange={(e) => setLinkFormData((prev) => ({ ...prev, title: e.target.value }))}
                   placeholder="مثال: مجلد ملخصات الكيمياء (Drive)"
-                  className="w-full px-3 py-2 text-xs bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  الرابط (URL) <span className="text-rose-400">*</span>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  الرابط (URL) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="url"
@@ -995,12 +971,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   value={linkFormData.url}
                   onChange={(e) => setLinkFormData((prev) => ({ ...prev, url: e.target.value }))}
                   placeholder="https://drive.google.com/..."
-                  className="w-full px-3 py-2 text-xs bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500 font-mono"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
                   وصف اختياري
                 </label>
                 <input
@@ -1008,13 +984,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   value={linkFormData.description}
                   onChange={(e) => setLinkFormData((prev) => ({ ...prev, description: e.target.value }))}
                   placeholder="ملاحظات مختصرة حول الرابط..."
-                  className="w-full px-3 py-2 text-xs bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     ترتيب الظهور
                   </label>
                   <input
@@ -1024,12 +1000,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     onChange={(e) =>
                       setLinkFormData((prev) => ({ ...prev, orderIndex: parseInt(e.target.value) || 0 }))
                     }
-                    className="w-full px-3 py-2 text-xs bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     الحالة
                   </label>
                   <select
@@ -1037,7 +1013,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     onChange={(e) =>
                       setLinkFormData((prev) => ({ ...prev, isActive: e.target.value === 'active' }))
                     }
-                    className="w-full px-3 py-2 text-xs bg-[#09152b] text-slate-100 border border-[#1b3459] rounded-xl focus:outline-none focus:border-sky-500"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white"
                   >
                     <option value="active">مفعل (ظاهر)</option>
                     <option value="inactive">مخفي</option>
@@ -1045,17 +1021,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#142642]">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setLinkModalOpen(false)}
-                  className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                  className="px-4 py-2 text-xs text-slate-500 hover:text-slate-800 font-bold"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  className="px-5 py-2 bg-[#0066ff] hover:bg-[#0055ee] text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
                 >
                   {editingLink ? 'تحديث الرابط' : 'إضافة الرابط'}
                 </button>
