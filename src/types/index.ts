@@ -73,4 +73,30 @@ export type PageId =
   | 'payments'
   | 'schedule'
   | 'reports'
-  | 'search';
+  | 'search'
+  | 'settings'
+  | 'ai-assistant';
+
+export interface CenterSettings {
+  id?: string;
+  centerName: string;
+  managerName: string;
+  phone: string;
+  contactInfo: string;
+  logoUrl?: string;
+  currency: string;
+  academicYear?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface StaticLink {
+  id: string;
+  title: string;
+  url: string;
+  description?: string;
+  isActive: boolean;
+  orderIndex: number;
+  createdAt?: string;
+  updatedAt?: string;
+}

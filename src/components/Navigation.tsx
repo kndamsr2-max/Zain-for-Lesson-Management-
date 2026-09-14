@@ -8,6 +8,8 @@ import {
   Calendar,
   BarChart3,
   Search,
+  Settings,
+  Bot,
   X,
   LogOut,
 } from 'lucide-react';
@@ -71,6 +73,16 @@ export const Navigation: React.FC<NavigationProps> = ({
       id: 'search',
       label: 'البحث',
       icon: <Search className="w-5 h-5 shrink-0" />,
+    },
+    {
+      id: 'ai-assistant',
+      label: 'المساعد الذكي',
+      icon: <Bot className="w-5 h-5 shrink-0 text-cyan-400" />,
+    },
+    {
+      id: 'settings',
+      label: 'الإعدادات',
+      icon: <Settings className="w-5 h-5 shrink-0" />,
     },
   ];
 

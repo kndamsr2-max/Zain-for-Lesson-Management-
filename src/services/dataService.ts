@@ -16,6 +16,8 @@ import {
   AttendanceRecord,
   LessonSession,
   AttendanceStatus,
+  CenterSettings,
+  StaticLink,
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { dbMapper } from './dbMapper';
@@ -28,6 +30,16 @@ let memoryStore = {
   payments: [] as PaymentRecord[],
   attendance: [] as AttendanceRecord[],
   sessions: [] as LessonSession[],
+  staticLinks: [] as StaticLink[],
+  settings: {
+    centerName: 'سنتر زين التعليمي',
+    managerName: 'أ/ زين',
+    phone: '01000000000',
+    contactInfo: 'القاهرة - مصر',
+    currency: 'ج.م',
+    academicYear: '2025 - 2026',
+    notes: 'نظام إدارة متقدم للمراكز التعليمية والدروس الخصوصية',
+  } as CenterSettings,
 };
 
 // ============================================================================
@@ -787,6 +799,332 @@ export const sessionsService = {
         data: memoryStore.sessions,
         error: 'تعذر الاتصال بقاعدة البيانات لجلب الحصص.',
       };
+    }
+  },
+};
+
+// ============================================================================
+// 6. SETTINGS SERVICE (خدمات إعدادات المركز والنظام)
+// ============================================================================
+export const settingsService = {
+  loadSettings: (): CenterSettings => {
+    return memoryStore.settings;
+  },
+
+  persistSettings: (settings: CenterSettings): void => {
+    memoryStore.settings = { ...settings };
+  },
+
+  async fetchSettings(): Promise<{ data: CenterSettings; error: string | null }> {
+    if (!isSupabaseConfigured) {
+      return { data: memoryStore.settings, error: null };
+    }
+
+    try {
+      // Query settings table in Supabase
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        // If settings table is protected or not accessible, retain operational state gracefully
+        console.warn('[settingsService] fetchSettings notice:', error.message);
+        return { data: memoryStore.settings, error: null };
+      }
+
+      if (data) {
+        const mapped: CenterSettings = {
+          id: data.id ? String(data.id) : undefined,
+          centerName: data.center_name || data.centerName || data.name || memoryStore.settings.centerName,
+          managerName: data.manager_name || data.managerName || memoryStore.settings.managerName,
+          phone: data.phone || data.mobile || memoryStore.settings.phone,
+          contactInfo: data.contact_info || data.address || memoryStore.settings.contactInfo,
+          logoUrl: data.logo_url || data.logo || undefined,
+          currency: data.currency || memoryStore.settings.currency,
+          academicYear: data.academic_year || memoryStore.settings.academicYear,
+          notes: data.notes || memoryStore.settings.notes,
+          updatedAt: data.updated_at || data.created_at,
+        };
+        memoryStore.settings = mapped;
+        return { data: mapped, error: null };
+      }
+
+      return { data: memoryStore.settings, error: null };
+    } catch (err: any) {
+      console.warn('[settingsService] fetchSettings exception:', err);
+      return { data: memoryStore.settings, error: null };
+    }
+  },
+
+  async updateSettings(
+    newSettings: CenterSettings
+  ): Promise<{ data: CenterSettings; error: string | null }> {
+    memoryStore.settings = { ...newSettings };
+
+    if (!isSupabaseConfigured) {
+      return { data: newSettings, error: null };
+    }
+
+    try {
+      // Attempt upsert or update in existing settings table
+      const payload: any = {
+        center_name: newSettings.centerName,
+        manager_name: newSettings.managerName,
+        phone: newSettings.phone,
+        contact_info: newSettings.contactInfo,
+        currency: newSettings.currency,
+        academic_year: newSettings.academicYear,
+        notes: newSettings.notes,
+        updated_at: new Date().toISOString(),
+      };
+      if (newSettings.id && isUUID(newSettings.id)) {
+        payload.id = newSettings.id;
+      }
+
+      const { data, error } = await supabase
+        .from('settings')
+        .upsert(payload)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        console.warn('[settingsService] updateSettings Supabase notice:', error.message);
+        return {
+          data: newSettings,
+          error: error.message.includes('relation') || error.message.includes('does not exist')
+            ? 'تم حفظ الإعدادات في الذاكرة التشغيلية، وسيتطلب ربطها بجدول settings تنفيذ مرحلة الـ SQL القادمة.'
+            : `تنبيه من Supabase: ${error.message}`,
+        };
+      }
+
+      if (data) {
+        newSettings.id = String(data.id || newSettings.id);
+      }
+
+      return { data: newSettings, error: null };
+    } catch (err: any) {
+      return {
+        data: newSettings,
+        error: 'تعذر الاتصال بقاعدة البيانات لحفظ الإعدادات، تم الحفظ مؤقتاً.',
+      };
+    }
+  },
+};
+
+// ============================================================================
+// 7. STATIC LINKS SERVICE (خدمات إدارة الروابط الثابتة)
+// ============================================================================
+export const staticLinksService = {
+  loadStaticLinks: (): StaticLink[] => {
+    return memoryStore.staticLinks;
+  },
+
+  persistStaticLinks: (links: StaticLink[]): void => {
+    memoryStore.staticLinks = [...links];
+  },
+
+  async fetchStaticLinks(): Promise<{ data: StaticLink[]; error: string | null; needsMigration?: boolean }> {
+    if (!isSupabaseConfigured) {
+      return { data: memoryStore.staticLinks, error: null };
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('static_links')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (error) {
+        const isMissingTable =
+          error.code === '42P01' ||
+          error.message?.includes('does not exist') ||
+          error.message?.includes('relation');
+
+        if (isMissingTable) {
+          return {
+            data: memoryStore.staticLinks,
+            error: 'جدول الروابط الثابتة غير موجود بقاعدة البيانات بعد.',
+            needsMigration: true,
+          };
+        }
+
+        console.warn('[staticLinksService] fetchStaticLinks notice:', error.message);
+        return { data: memoryStore.staticLinks, error: error.message };
+      }
+
+      if (data) {
+        const mapped: StaticLink[] = data.map((item: any) => ({
+          id: String(item.id),
+          title: item.title || '',
+          url: item.url || '',
+          description: item.description || '',
+          isActive: item.is_active !== undefined ? Boolean(item.is_active) : true,
+          orderIndex: Number(item.order_index || 0),
+          createdAt: item.created_at,
+          updatedAt: item.updated_at,
+        }));
+        memoryStore.staticLinks = mapped;
+        return { data: mapped, error: null };
+      }
+
+      return { data: memoryStore.staticLinks, error: null };
+    } catch (err: any) {
+      return { data: memoryStore.staticLinks, error: err?.message || 'خطأ أثناء جلب الروابط الثابتة' };
+    }
+  },
+
+  async createStaticLink(
+    linkData: Omit<StaticLink, 'id'>
+  ): Promise<{ data: StaticLink | null; error: string | null; needsMigration?: boolean }> {
+    const newId = generateUUID();
+    const newLink: StaticLink = {
+      ...linkData,
+      id: newId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (!isSupabaseConfigured) {
+      memoryStore.staticLinks.push(newLink);
+      return { data: newLink, error: null };
+    }
+
+    try {
+      const payload: any = {
+        id: newId,
+        title: newLink.title,
+        url: newLink.url,
+        description: newLink.description || null,
+        is_active: newLink.isActive,
+        order_index: newLink.orderIndex,
+        created_at: newLink.createdAt,
+        updated_at: newLink.updatedAt,
+      };
+
+      const { data, error } = await supabase
+        .from('static_links')
+        .insert(payload)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        const isMissingTable =
+          error.code === '42P01' ||
+          error.message?.includes('does not exist') ||
+          error.message?.includes('relation');
+
+        memoryStore.staticLinks.push(newLink);
+        return {
+          data: newLink,
+          error: isMissingTable
+            ? 'تم حفظ الرابط مؤقتاً بالذاكرة؛ يلزم تنفيذ SQL المرحلة التالية لإنشاء جدول static_links في Supabase.'
+            : `تنبيه: ${error.message}`,
+          needsMigration: isMissingTable,
+        };
+      }
+
+      const created: StaticLink = data
+        ? {
+            id: String(data.id),
+            title: data.title,
+            url: data.url,
+            description: data.description || '',
+            isActive: Boolean(data.is_active),
+            orderIndex: Number(data.order_index || 0),
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+          }
+        : newLink;
+
+      memoryStore.staticLinks.push(created);
+      return { data: created, error: null };
+    } catch (err: any) {
+      memoryStore.staticLinks.push(newLink);
+      return { data: newLink, error: 'تعذر الاتصال بقاعدة البيانات، تم الحفظ مؤقتاً.' };
+    }
+  },
+
+  async updateStaticLink(
+    id: string,
+    updates: Partial<Omit<StaticLink, 'id'>>
+  ): Promise<{ data: StaticLink | null; error: string | null; needsMigration?: boolean }> {
+    const existingIndex = memoryStore.staticLinks.findIndex((l) => l.id === id);
+    if (existingIndex >= 0) {
+      memoryStore.staticLinks[existingIndex] = {
+        ...memoryStore.staticLinks[existingIndex],
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (!isSupabaseConfigured) {
+      return {
+        data: existingIndex >= 0 ? memoryStore.staticLinks[existingIndex] : null,
+        error: null,
+      };
+    }
+
+    try {
+      const payload: any = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.title !== undefined) payload.title = updates.title;
+      if (updates.url !== undefined) payload.url = updates.url;
+      if (updates.description !== undefined) payload.description = updates.description;
+      if (updates.isActive !== undefined) payload.is_active = updates.isActive;
+      if (updates.orderIndex !== undefined) payload.order_index = updates.orderIndex;
+
+      const { data, error } = await supabase
+        .from('static_links')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        const isMissingTable =
+          error.code === '42P01' ||
+          error.message?.includes('does not exist') ||
+          error.message?.includes('relation');
+
+        return {
+          data: existingIndex >= 0 ? memoryStore.staticLinks[existingIndex] : null,
+          error: isMissingTable
+            ? 'تم تعديل الرابط مؤقتاً؛ يلزم تشغيل SQL لإنشاء جدول static_links في Supabase.'
+            : error.message,
+          needsMigration: isMissingTable,
+        };
+      }
+
+      return {
+        data: existingIndex >= 0 ? memoryStore.staticLinks[existingIndex] : null,
+        error: null,
+      };
+    } catch (err: any) {
+      return {
+        data: existingIndex >= 0 ? memoryStore.staticLinks[existingIndex] : null,
+        error: 'تعذر الاتصال بقاعدة البيانات أثناء التحديث.',
+      };
+    }
+  },
+
+  async deleteStaticLink(id: string): Promise<{ success: boolean; error: string | null }> {
+    memoryStore.staticLinks = memoryStore.staticLinks.filter((l) => l.id !== id);
+
+    if (!isSupabaseConfigured) {
+      return { success: true, error: null };
+    }
+
+    try {
+      const { error } = await supabase.from('static_links').delete().eq('id', id);
+      if (error) {
+        console.warn('[staticLinksService] delete notice:', error.message);
+      }
+      return { success: true, error: null };
+    } catch (err: any) {
+      return { success: true, error: null };
     }
   },
 };

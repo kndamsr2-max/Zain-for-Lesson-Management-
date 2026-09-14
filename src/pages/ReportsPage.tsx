@@ -16,8 +16,12 @@ import {
   XCircle,
   AlertCircle,
   Filter,
+  FileSpreadsheet,
+  FileText,
+  Download,
 } from 'lucide-react';
 import { AttendanceRecord, Group, PaymentRecord, Student } from '../types';
+import { exportToExcel, exportToWord, exportToPDF } from '../utils/exportUtils';
 
 interface ReportsPageProps {
   students: Student[];
@@ -137,6 +141,132 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
     0
   );
 
+  const handleExportCurrentReport = (format: 'excel' | 'word' | 'pdf') => {
+    let options: any;
+
+    if (activeTab === 'students') {
+      options = {
+        title: 'تقرير الطلاب الشامل - سنتر زين',
+        subtitle: 'بيانات الطلاب والاشتراكات',
+        filename: 'تقرير_الطلاب_الشامل',
+        columns: [
+          { header: 'اسم الطالب', key: 'name' },
+          { header: 'المجموعة', key: 'group' },
+          { header: 'الهاتف', key: 'phone' },
+          { header: 'سعر الاشتراك', key: 'fee' },
+          { header: 'المدفوع', key: 'paid' },
+          { header: 'المتبقي', key: 'remaining' },
+          { header: 'الحالة', key: 'status' },
+        ],
+        rows: filteredStudents.map((st) => {
+          const fin = getStudentFinancials(st);
+          return {
+            name: st.name,
+            group: st.groupName || '—',
+            phone: st.phone,
+            fee: `${st.subscriptionFee} ج.م`,
+            paid: `${fin.paid} ج.م`,
+            remaining: `${fin.remaining} ج.م`,
+            status: st.status,
+          };
+        }),
+      };
+    } else if (activeTab === 'groups') {
+      options = {
+        title: 'تقرير المجموعات الدراسية - سنتر زين',
+        subtitle: 'المجموعات والمواعيد والاشتراكات',
+        filename: 'تقرير_المجموعات',
+        columns: [
+          { header: 'اسم المجموعة', key: 'name' },
+          { header: 'المادة / الكورس', key: 'course' },
+          { header: 'أيام الحصص', key: 'days' },
+          { header: 'التوقيت', key: 'time' },
+          { header: 'سعر الاشتراك', key: 'fee' },
+          { header: 'عدد الطلاب', key: 'count' },
+        ],
+        rows: groups.map((g) => ({
+          name: g.name,
+          course: g.course,
+          days: g.days,
+          time: g.time,
+          fee: `${g.fee} ج.م`,
+          count: students.filter((s) => s.groupId === g.id).length,
+        })),
+      };
+    } else if (activeTab === 'attendance') {
+      options = {
+        title: 'تقرير نسب الحضور والغياب - سنتر زين',
+        subtitle: 'إحصائيات حضور الطلاب',
+        filename: 'تقرير_الحضور_والغياب',
+        columns: [
+          { header: 'اسم الطالب', key: 'name' },
+          { header: 'المجموعة', key: 'group' },
+          { header: 'عدد مرات الحضور', key: 'present' },
+          { header: 'عدد مرات الغياب', key: 'absent' },
+          { header: 'متأخر', key: 'late' },
+          { header: 'نسبة الالتزام', key: 'rate' },
+        ],
+        rows: studentAttendanceSummary.map((s) => ({
+          name: s.student.name,
+          group: s.student.groupName || '—',
+          present: s.present,
+          absent: s.absent,
+          late: s.late,
+          rate: `${s.rate}%`,
+        })),
+      };
+    } else if (activeTab === 'payments') {
+      options = {
+        title: 'تقرير المقبوضات المالية - سنتر زين',
+        subtitle: 'سجل العمليات المالية المحصلة',
+        filename: 'تقرير_المقبوضات',
+        columns: [
+          { header: 'رقم الإيصال', key: 'receipt' },
+          { header: 'اسم الطالب', key: 'name' },
+          { header: 'المبلغ المسدد', key: 'amount' },
+          { header: 'تاريخ الدفع', key: 'date' },
+          { header: 'طريقة الدفع', key: 'method' },
+        ],
+        rows: filteredPayments.map((p) => ({
+          receipt: p.receiptNumber || 'REC-' + p.id.slice(0, 6),
+          name: p.studentName,
+          amount: `${p.amount} ج.م`,
+          date: p.date,
+          method: p.paymentMethod,
+        })),
+      };
+    } else {
+      options = {
+        title: 'تقرير المبالغ المتبقية والديون المستحقة - سنتر زين',
+        subtitle: 'قائمة الطلاب المتبقي عليهم مبالغ اشتراك',
+        filename: 'تقرير_المبالغ_المتبقية',
+        columns: [
+          { header: 'اسم الطالب', key: 'name' },
+          { header: 'المجموعة', key: 'group' },
+          { header: 'الهاتف', key: 'phone' },
+          { header: 'قيمة الاشتراك', key: 'fee' },
+          { header: 'المبلغ المدفوع', key: 'paid' },
+          { header: 'المبلغ المتبقي', key: 'remaining' },
+        ],
+        rows: studentsWithDues.map((st) => {
+          const fin = getStudentFinancials(st);
+          return {
+            name: st.name,
+            group: st.groupName || '—',
+            phone: st.phone,
+            fee: `${st.subscriptionFee} ج.م`,
+            paid: `${fin.paid} ج.م`,
+            remaining: `${fin.remaining} ج.م`,
+          };
+        }),
+      };
+    }
+
+    if (format === 'excel') exportToExcel(options);
+    else if (format === 'word') exportToWord(options);
+    else exportToPDF(options);
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -151,7 +281,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
 
   return (
     <div className="space-y-5 select-none" dir="rtl">
-      {/* Header section with Print Action */}
+      {/* Header section with Print Action & Export Formats */}
       <div className="bg-[#08152b] rounded-2xl border border-[#173054] p-5 shadow-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-white flex items-center gap-2.5">
@@ -163,14 +293,50 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
           </p>
         </div>
 
-        <button
-          id="btn-print-report"
-          onClick={handlePrint}
-          className="px-4 py-2 bg-[#09152b] hover:bg-[#112444] text-slate-200 border border-[#1b3459] rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
-        >
-          <Printer className="w-4 h-4 text-sky-400" />
-          <span>طباعة التقرير</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Export Dropdown / Format Buttons */}
+          <div className="flex items-center gap-1.5 bg-[#09152b] p-1 rounded-xl border border-[#1b3459]">
+            <button
+              id="btn-export-excel-reports"
+              type="button"
+              onClick={() => handleExportCurrentReport('excel')}
+              className="px-2.5 py-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              title="تصدير التقرير الحالي إلى Excel"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Excel</span>
+            </button>
+            <button
+              id="btn-export-word-reports"
+              type="button"
+              onClick={() => handleExportCurrentReport('word')}
+              className="px-2.5 py-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              title="تصدير التقرير الحالي إلى Word"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Word</span>
+            </button>
+            <button
+              id="btn-export-pdf-reports"
+              type="button"
+              onClick={() => handleExportCurrentReport('pdf')}
+              className="px-2.5 py-1.5 text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              title="تصدير التقرير الحالي إلى PDF"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>PDF</span>
+            </button>
+          </div>
+
+          <button
+            id="btn-print-report"
+            onClick={handlePrint}
+            className="px-3.5 py-2 bg-[#09152b] hover:bg-[#112444] text-slate-200 border border-[#1b3459] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <Printer className="w-4 h-4 text-sky-400" />
+            <span>طباعة</span>
+          </button>
+        </div>
       </div>
 
       {/* Tabs list (5 reports) */}

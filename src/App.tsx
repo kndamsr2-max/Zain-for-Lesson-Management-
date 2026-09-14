@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, RefreshCw, AlertCircle } from 'lucide-react';
-import { PageId, Student, Group, PaymentRecord, LessonSession, AttendanceRecord, AttendanceStatus } from './types';
+import { PageId, Student, Group, PaymentRecord, LessonSession, AttendanceRecord, AttendanceStatus, CenterSettings } from './types';
 import { generateUUID } from './utils/uuid';
 import {
   studentsService,
@@ -8,6 +8,7 @@ import {
   paymentsService,
   attendanceService,
   sessionsService,
+  settingsService,
 } from './services/dataService';
 import { setupRealtimeSync } from './services/realtimeService';
 import { dbMapper } from './services/dbMapper';
@@ -30,6 +31,8 @@ import { PaymentsPage } from './pages/PaymentsPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SearchPage } from './pages/SearchPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { AIAssistantPage } from './pages/AIAssistantPage';
 import { LoginPage } from './pages/LoginPage';
 import { TopBar } from './components/TopBar';
 
@@ -74,6 +77,7 @@ export default function App() {
   const [payments, setPayments] = useState<PaymentRecord[]>(() => paymentsService.loadPayments());
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => attendanceService.loadAttendance());
   const [sessions, setSessions] = useState<LessonSession[]>(() => sessionsService.loadSessions());
+  const [centerSettings, setCenterSettings] = useState<CenterSettings>(() => settingsService.loadSettings());
 
   // Loading & Sync States
   const [isLoading, setIsLoading] = useState(false);
@@ -137,12 +141,13 @@ export default function App() {
     const currentRequestId = ++fetchRequestIdRef.current;
     if (!silent) setIsLoading(true);
     try {
-      const [studentsRes, groupsRes, paymentsRes, attendanceRes, sessionsRes] = await Promise.all([
+      const [studentsRes, groupsRes, paymentsRes, attendanceRes, sessionsRes, settingsRes] = await Promise.all([
         studentsService.fetchStudents(),
         groupsService.fetchGroups(),
         paymentsService.fetchPayments(),
         attendanceService.fetchAttendance(),
         sessionsService.fetchSessions(),
+        settingsService.fetchSettings(),
       ]);
 
       // Guard against race condition: ignore stale response if a newer fetch was initiated
@@ -155,6 +160,7 @@ export default function App() {
       if (paymentsRes.data) setPayments(paymentsRes.data);
       if (attendanceRes.data) setAttendance(attendanceRes.data);
       if (sessionsRes.data) setSessions(sessionsRes.data);
+      if (settingsRes.data) setCenterSettings(settingsRes.data);
 
       // Report any error non-blockingly with Arabic notification
       const errors = [
@@ -795,6 +801,20 @@ export default function App() {
     setAttendanceHistoryModalOpen(true);
   };
 
+  // Save Settings handler
+  const handleSaveSettings = async (
+    newSettings: CenterSettings
+  ): Promise<{ success: boolean; message?: string }> => {
+    setCenterSettings(newSettings);
+    const res = await settingsService.updateSettings(newSettings);
+    if (res.error) {
+      showNotification(res.error, 'info');
+      return { success: true, message: res.error };
+    }
+    showNotification('تم حفظ إعدادات السنتر بنجاح في Supabase', 'success');
+    return { success: true, message: 'تم حفظ الإعدادات بنجاح في Supabase.' };
+  };
+
   // If user is not logged in, display the dedicated Login Page matching the reference design
   if (!isLoggedIn) {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
@@ -938,13 +958,17 @@ export default function App() {
             <PaymentsPage
               payments={payments}
               students={students}
-              onOpenRecordPayment={() => {
-                setPreselectedStudentForPayment(undefined);
+              onOpenRecordPayment={(preselectedStudent) => {
+                setPreselectedStudentForPayment(preselectedStudent ? preselectedStudent.id : undefined);
                 setPaymentToEdit(null);
                 setPaymentModalOpen(true);
               }}
               onEditPayment={handleOpenEditPayment}
               onDeletePayment={handleDeletePayment}
+              onViewStudent={(student) => {
+                setStudentToView(student);
+                setViewStudentModalOpen(true);
+              }}
             />
           )}
 
@@ -987,6 +1011,25 @@ export default function App() {
                 setViewStudentModalOpen(true);
               }}
               onOpenAttendanceHistory={handleOpenAttendanceHistory}
+            />
+          )}
+
+          {currentPage === 'ai-assistant' && (
+            <AIAssistantPage
+              students={students}
+              groups={groups}
+              payments={payments}
+              attendance={attendance}
+            />
+          )}
+
+          {currentPage === 'settings' && (
+            <SettingsPage
+              settings={centerSettings}
+              onSaveSettings={handleSaveSettings}
+              onLogout={handleLogout}
+              isSupabaseConnected={isSupabaseConfigured}
+              onReloadAllData={loadAllDataFromSupabase}
             />
           )}
         </main>
