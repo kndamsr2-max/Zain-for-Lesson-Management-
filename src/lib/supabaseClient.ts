@@ -13,17 +13,15 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Safe environment variable reading from Vercel / Vite
-const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : null;
-
+// Read environment variables directly via import.meta.env for static compile-time Vite replacement
 const envUrl: string =
-  metaEnv && metaEnv.VITE_SUPABASE_URL
-    ? String(metaEnv.VITE_SUPABASE_URL).trim()
+  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL
+    ? String(import.meta.env.VITE_SUPABASE_URL).trim()
     : '';
 
 const envAnonKey: string =
-  metaEnv && metaEnv.VITE_SUPABASE_ANON_KEY
-    ? String(metaEnv.VITE_SUPABASE_ANON_KEY).trim()
+  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_ANON_KEY
+    ? String(import.meta.env.VITE_SUPABASE_ANON_KEY).trim()
     : '';
 
 // Active in-memory or custom configured endpoints

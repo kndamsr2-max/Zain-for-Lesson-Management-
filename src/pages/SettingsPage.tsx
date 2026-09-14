@@ -36,6 +36,7 @@ import {
   Sliders,
   Music,
   BellRing,
+  Lock,
 } from 'lucide-react';
 import { CenterSettings, StaticLink } from '../types';
 import { soundService } from '../utils/soundService';
@@ -477,57 +478,104 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 <Database className="w-5 h-5 text-[#0066ff]" />
                 <h3 className="text-sm font-bold text-slate-800">إعدادات الاتصال بقاعدة بيانات Supabase</h3>
               </div>
-              <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-bold">
-                {initialConfig.isEnvConfigured ? 'Vercel Env: متوفرة' : 'Vercel Env: غير معينة'}
+              <span
+                className={`text-xs font-mono px-3 py-1 rounded-full font-bold flex items-center gap-1.5 ${
+                  initialConfig.isEnvConfigured
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    initialConfig.isEnvConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  }`}
+                />
+                {initialConfig.isEnvConfigured
+                  ? 'Vercel Env: متصلة وثابتة تلقائياً'
+                  : 'Vercel Env: غير معينة'}
               </span>
             </div>
 
             <div className="p-5 sm:p-6 space-y-5">
-              {/* Instructions box */}
-              <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-200 text-xs text-slate-700 space-y-2">
-                <p className="font-bold text-[#0066ff] flex items-center gap-1.5">
-                  <Server className="w-4 h-4" />
-                  <span>دليل إعداد الاتصال في بيئة الإنتاج (Vercel):</span>
-                </p>
-                <p className="leading-relaxed text-slate-600">
-                  لضمان الاتصال التلقائي الدائم عند كل نشر، أضف المتغيرات التالية في لوحة تحكم Vercel (Project Settings &rarr; Environment Variables):
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 font-mono text-xs">
-                  <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-slate-800">
-                    <span className="text-slate-500">اسم المتغير: </span>
-                    <strong className="text-[#0066ff]">VITE_SUPABASE_URL</strong>
+              {/* Permanent Env Config Banner */}
+              {initialConfig.isEnvConfigured ? (
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-emerald-800 text-sm">
+                    <Shield className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>النظام يعتمد تلقائياً وبشكل دائم على متغيرات Vercel</span>
                   </div>
-                  <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-slate-800">
-                    <span className="text-slate-500">اسم المتغير: </span>
-                    <strong className="text-[#0066ff]">VITE_SUPABASE_ANON_KEY</strong>
-                  </div>
+                  <p className="leading-relaxed text-emerald-800 text-xs">
+                    تم تحميل بيانات الاتصال تلقائياً من بيئة Vercel (<code className="font-mono font-bold">VITE_SUPABASE_URL</code> و <code className="font-mono font-bold">VITE_SUPABASE_ANON_KEY</code>). سيبقى الاتصال مستقراً وثابتاً ولن يطلب منك النظام إعادة إدخالها عند عمل Refresh.
+                  </p>
                 </div>
-                <p className="text-[11px] text-amber-700 font-semibold pt-1">
-                  * تنبيه أمني: استخدم فقط مفتاح <strong>Anon Key (Public)</strong> وممنوع نهائياً استخدام مفتاح Service Role Key في الواجهة.
-                </p>
-              </div>
+              ) : (
+                /* Instructions box for manual setup when env vars are missing */
+                <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-200 text-xs text-slate-700 space-y-2">
+                  <p className="font-bold text-[#0066ff] flex items-center gap-1.5">
+                    <Server className="w-4 h-4" />
+                    <span>دليل إعداد الاتصال الدائم في بيئة Vercel:</span>
+                  </p>
+                  <p className="leading-relaxed text-slate-600">
+                    لضمان الاتصال التلقائي الدائم بعد عمل Refresh، أضف المتغيرات التالية في لوحة تحكم Vercel (Project Settings &rarr; Environment Variables) ثم أعد النشر (Redeploy):
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 font-mono text-xs">
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-slate-800">
+                      <span className="text-slate-500">اسم المتغير: </span>
+                      <strong className="text-[#0066ff]">VITE_SUPABASE_URL</strong>
+                    </div>
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-slate-800">
+                      <span className="text-slate-500">اسم المتغير: </span>
+                      <strong className="text-[#0066ff]">VITE_SUPABASE_ANON_KEY</strong>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-amber-700 font-semibold pt-1">
+                    * تنبيه أمني: استخدم فقط مفتاح <strong>Anon Key (Public)</strong> وممنوع نهائياً استخدام مفتاح Service Role Key في الواجهة.
+                  </p>
+                </div>
+              )}
 
               {/* Form Inputs */}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    رابط مشروع Supabase (Supabase URL) <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      رابط مشروع Supabase (Supabase URL) <span className="text-rose-500">*</span>
+                    </label>
+                    {initialConfig.isEnvConfigured && (
+                      <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                        <Lock className="w-3 h-3 text-emerald-600" />
+                        محمل تلقائياً من بيئة Vercel
+                      </span>
+                    )}
+                  </div>
                   <input
                     id="input-supabase-url"
                     type="url"
                     dir="ltr"
                     value={supabaseUrlInput}
                     onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                    disabled={initialConfig.isEnvConfigured}
                     placeholder="https://xyzcompany.supabase.co"
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white font-mono"
+                    className={`w-full px-3.5 py-2.5 text-xs sm:text-sm border rounded-xl font-mono ${
+                      initialConfig.isEnvConfigured
+                        ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed select-all'
+                        : 'bg-slate-50 text-slate-800 border-slate-200 focus:outline-none focus:border-[#0066ff] focus:bg-white'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    مفتاح المشروع المجهول (Supabase Anon Key) <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      مفتاح المشروع المجهول (Supabase Anon Key) <span className="text-rose-500">*</span>
+                    </label>
+                    {initialConfig.isEnvConfigured && (
+                      <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                        <Lock className="w-3 h-3 text-emerald-600" />
+                        محمل ومحمي من بيئة Vercel
+                      </span>
+                    )}
+                  </div>
                   <div className="relative">
                     <input
                       id="input-supabase-anon-key"
@@ -535,8 +583,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       dir="ltr"
                       value={supabaseAnonKeyInput}
                       onChange={(e) => setSupabaseAnonKeyInput(e.target.value)}
+                      disabled={initialConfig.isEnvConfigured}
                       placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                      className="w-full px-3.5 py-2.5 pl-10 text-xs sm:text-sm bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0066ff] focus:bg-white font-mono"
+                      className={`w-full px-3.5 py-2.5 pl-10 text-xs sm:text-sm border rounded-xl font-mono ${
+                        initialConfig.isEnvConfigured
+                          ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed'
+                          : 'bg-slate-50 text-slate-800 border-slate-200 focus:outline-none focus:border-[#0066ff] focus:bg-white'
+                      }`}
                     />
                     <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   </div>
@@ -596,18 +649,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                   <span>{isTestingConnection ? 'جاري فحص الاتصال...' : 'اختبار الاتصال'}</span>
                 </button>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <button
-                    id="btn-save-supabase-connection"
-                    type="button"
-                    onClick={handleSaveConnectionSettings}
-                    disabled={isSavingConnection}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-[#0066ff] hover:bg-[#0055ee] text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>{isSavingConnection ? 'جاري الحفظ والتطبيق...' : 'حفظ وتفعيل الاتصال'}</span>
-                  </button>
-                </div>
+                {!initialConfig.isEnvConfigured && (
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      id="btn-save-supabase-connection"
+                      type="button"
+                      onClick={handleSaveConnectionSettings}
+                      disabled={isSavingConnection}
+                      className="w-full sm:w-auto px-6 py-2.5 bg-[#0066ff] hover:bg-[#0055ee] text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>{isSavingConnection ? 'جاري الحفظ والتطبيق...' : 'حفظ وتفعيل الاتصال'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
